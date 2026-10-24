@@ -89,6 +89,19 @@ function requireTurn(state) {
   return turns;
 }
 
+async function reload(ctx) {
+  await ctx.eval('location.reload()');
+  for (let i = 0; i < 40; i += 1) {
+    await ctx.sleep(200);
+    try {
+      if (await ctx.eval('document.readyState') === 'complete') break;
+    } catch {
+      // Navigation tears down the execution context; retry on the next tick.
+    }
+  }
+  await ctx.sleep(500);
+}
+
 async function waitForEnergy(ctx, cfg, run) {
   let last = null;
   let state = await readSettled(ctx);
@@ -111,7 +124,10 @@ async function waitForEnergy(ctx, cfg, run) {
     }
     for (let i = 0; i < POLL_MS / 1000 && !run.stopped; i += 1) await ctx.sleep(1000);
     if (run.stopped) return null;
-    state = await readSettled(ctx);
+    // The header is a server snapshot and does not tick, so force a fresh page every poll.
+    ctx.log('info', 'gym: refreshing page to read energy');
+    await reload(ctx);
+    state = await ensurePage(ctx, cfg);
   }
 }
 
