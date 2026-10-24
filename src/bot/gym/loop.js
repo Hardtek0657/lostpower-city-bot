@@ -79,9 +79,6 @@ async function waitForEnergy(ctx, cfg, run) {
   let state = await ctx.read();
   while (true) {
     if (run.stopped) return null;
-    if (Date.now() - run.start >= cfg.maxSessionMinutes * 60_000) {
-      throw new Error('session cap while waiting for energy');
-    }
     if (!state.page) state = await ensurePage(ctx, cfg);
     const have = state.energy?.current;
     if (have == null) throw new Error('energy meter not readable');
@@ -223,12 +220,11 @@ export async function startGym(ctx) {
       }
 
       while (!run.stopped) {
-        if (run.sets >= cfg.maxSets) return `max sets (${cfg.maxSets})`;
         state = await waitForEnergy(ctx, cfg, run);
         if (!state || run.stopped) return 'stopped';
         requireTurn(state);
 
-        while (!run.stopped && run.sets < cfg.maxSets) {
+        while (!run.stopped) {
           state = await prepare(ctx, cfg, state);
           if (state.trainDisabled) {
             return `train disabled — ${state.status || state.preview || 'the game blocked the set'}`;

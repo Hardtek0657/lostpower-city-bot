@@ -20,8 +20,10 @@ restarts.
   `max(1, floor(share × current energy))`. On a 150 bar, 25% spends 37 when full but 3 when the bar
   is down to 15.
 - The loop polls the energy meter and waits while the bar is empty; it trains as soon as there is
-  energy for the chosen share. It keeps training while the remaining bar still covers another set
-  and `maxSets` has not been reached (25% per set is roughly four sets from a full bar; 100% is one).
+  energy for the chosen share. It keeps training while the remaining bar still covers another set,
+  so with 25% per set it works a full bar down to zero before waiting for regeneration.
+- There is **no set limit and no session cap**: the feature runs until you stop it, the kill switch,
+  or a real blocker (no turns, restricted gym, unreadable page).
 - Each set costs a turn, so the loop also checks the header turn counter and refuses to start a set
   at zero turns, pausing with `no turns available` instead of clicking into a blocked action.
 - The estimated gain, energy cost, confidence cost, exp and turn cost are read from the preview
@@ -34,8 +36,6 @@ restarts.
 | privateGym | off | use `#/city/private-gym`; requires an active Supporter |
 | stat | strength | `strength`, `speed` or `guard` (the game calls defence "Guard") |
 | energyPercent | 25 | 5, 10, 25, 50 or 100 percent of current energy per set |
-| maxSets | 10 | |
-| maxSessionMinutes | 240 | includes time spent waiting for energy |
 | dryRun | on | prepares focus and set size, never trains |
 
 ## Observed

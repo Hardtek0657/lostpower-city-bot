@@ -71,7 +71,6 @@ function summaryOf(f, cfg) {
   if (cfg.privateGym) parts.push('private gym');
   if (cfg.bet != null) parts.push(`bet ${cfg.bet}`);
   if (cfg.maxHands != null) parts.push(`${cfg.maxHands} hands`);
-  if (cfg.maxSets != null) parts.push(`${cfg.maxSets} sets`);
   return parts.join(' · ');
 }
 
