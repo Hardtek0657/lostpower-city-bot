@@ -1,0 +1,15 @@
+{
+  "name": "lostpower-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.js",
+  "description": "LostPower Bot - feature-toggled automation for Lost Power City",
+  "scripts": {
+    "start": "electron .",
+    "self-test": "electron . --self-test"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0"
+  }
+}

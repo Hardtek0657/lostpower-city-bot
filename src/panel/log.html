@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>LostPower Bot — Log</title>
+  <style>
+    :root {
+      --bg: #05080b;
+      --line: #17222c;
+      --muted: #6f8294;
+      --text: #c9d6e2;
+      --warn: #d8a13a;
+      --danger: #d76a6a;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
+    header .count { margin-left: auto; letter-spacing: 0.4px; }
+    header button {
+      background: none;
+      border: 0;
+      color: var(--muted);
+      font: inherit;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      cursor: pointer;
+      padding: 0;
+    }
+    header button:hover { color: var(--text); }
+    ol { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 8px 12px 14px; list-style: none; }
+    li { padding: 1px 0; white-space: pre-wrap; word-break: break-word; color: #9db0c2; }
+    li.warn { color: var(--warn); }
+    li.error { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <header>
+    <span>Log</span>
+    <span class="count" id="count">0 lines</span>
+    <button id="clear" type="button">clear</button>
+  </header>
+  <ol id="log"></ol>
+  <script src="log.js"></script>
+</body>
+</html>

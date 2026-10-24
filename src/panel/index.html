@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>LostPower Bot</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <aside id="panel">
+    <header>
+      <div class="brand">LOSTPOWER<span>BOT</span></div>
+      <div id="status" class="status idle" title=""><i></i><span id="statusText">idle</span></div>
+    </header>
+
+    <div id="notice" hidden></div>
+
+    <main>
+      <section id="features"></section>
+
+      <section id="account">
+        <button class="disclosure" id="acctToggle" type="button" aria-expanded="false" aria-controls="acctBody">
+          <span class="chev">▸</span><span class="name">ACCOUNT</span>
+        </button>
+        <p class="summary" id="acctSummary"></p>
+        <div id="acctBody">
+          <label class="row"><span>Auto login</span><input type="checkbox" id="autoLogin"></label>
+          <label class="row"><span>Username</span><input id="gUser" type="text" spellcheck="false" autocomplete="username"></label>
+          <label class="row"><span>Password</span><input id="gPass" type="password" autocomplete="current-password"></label>
+          <div class="row">
+            <span id="authState" class="hint"></span>
+            <span class="authBtns">
+              <button id="clearAuth" type="button">clear</button>
+              <button id="saveAuth" type="button">save</button>
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section id="session" hidden>
+        <div class="statrow">
+          <span>HANDS <b id="st-hands">0</b></span>
+          <span>P/L <b id="st-pl">0</b></span>
+          <span>AGREE <b id="st-agree">–</b></span>
+          <span>TOKENS <b id="st-tokens">0</b></span>
+        </div>
+        <p id="st-last" class="last"></p>
+      </section>
+
+      <section class="logbox">
+        <h2>LOG <span class="logtools"><button id="popLog" type="button">pop out</button><button id="clearLog" type="button">clear</button></span></h2>
+        <ol id="log"></ol>
+      </section>
+    </main>
+
+    <footer><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> stop all</footer>
+  </aside>
+  <script src="panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+out/
+
+# private dev material: credentials, captured account data and offline test suite
+recon/
+test/
+*.rar
+*.log
