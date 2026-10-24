@@ -38,7 +38,9 @@ async function ensurePage(ctx, cfg) {
   const want = cfg.privateGym ? SEL.routes.privateGym : SEL.routes.gym;
   let state = await ctx.read();
   if (state.login) throw new Error('not logged in — log into the game in this window first');
-  if (state.page && state.route === want) return state;
+  if (state.page && state.route === want && state.sliderValue != null && /ESTIMATED/i.test(state.preview)) {
+    return state;
+  }
 
   await ctx.eval(`location.hash = ${J(want)}`);
   const end = Date.now() + 12_000;
@@ -46,12 +48,33 @@ async function ensurePage(ctx, cfg) {
     await ctx.sleep(250);
     state = await ctx.read();
     if (state.login) throw new Error('not logged in — log into the game in this window first');
-    if (state.page && state.route === want) return state;
+    if (state.page && state.route === want && state.sliderValue != null && /ESTIMATED/i.test(state.preview)) {
+      return state;
+    }
   }
   throw new Error(`gym page did not load (${want})`);
 }
 
-async function waitForFullEnergy(ctx, cfg, run) {
+function energyNeed(cfg, state) {
+  const current = state.energy?.current;
+  if (current == null) return null;
+  // The game takes a percentage of the *current* bar, floored, with a minimum of 1.
+  return Math.max(1, Math.floor((Number(cfg.energyPercent) / 100) * current));
+}
+
+function turnCount(state) {
+  return state.turns?.current;
+}
+
+function requireTurn(state) {
+  const turns = turnCount(state);
+  if (turns != null && turns < 1) {
+    throw new Error('no turns available — wait for a turn, then start the feature again');
+  }
+  return turns;
+}
+
+async function waitForEnergy(ctx, cfg, run) {
   let last = null;
   let state = await ctx.read();
   while (true) {
@@ -60,12 +83,12 @@ async function waitForFullEnergy(ctx, cfg, run) {
       throw new Error('session cap while waiting for energy');
     }
     if (!state.page) state = await ensurePage(ctx, cfg);
-    const pct = state.energy?.percent;
-    if (pct == null) throw new Error('energy meter not readable');
-    if (pct >= 100) return state;
-    if (pct !== last) {
-      ctx.log('info', `gym: waiting for full energy (${pct}%)`);
-      last = pct;
+    const have = state.energy?.current;
+    if (have == null) throw new Error('energy meter not readable');
+    if (have >= 1) return state;
+    if (have !== last) {
+      ctx.log('info', `gym: waiting for energy (${have}/${state.energy?.max ?? '?'})`);
+      last = have;
     }
     for (let i = 0; i < POLL_MS / 1000 && !run.stopped; i += 1) await ctx.sleep(1000);
     if (run.stopped) return null;
@@ -81,30 +104,39 @@ async function prepare(ctx, cfg, state) {
     await ctx.sleep(250);
   }
   const percent = Number(cfg.energyPercent);
-  const before = await ctx.read();
-  await ctx.eval(`(() => {
+  const setSlider = (value) => ctx.eval(`(() => {
     const el = document.querySelector(${J(SEL.gym.energy)});
     if (!el) return false;
-    el.value = String(${percent});
+    el.value = String(${value});
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     return true;
   })()`);
-  // The slider value updates first, the preview recalculation follows a frame later.
-  let after = before;
-  for (let i = 0; i < 15; i += 1) {
-    await ctx.sleep(200);
+
+  await setSlider(percent);
+  const want = energyNeed(cfg, state);
+  let after = await ctx.read();
+  // The first synthetic change can be swallowed while Angular finishes wiring the slider,
+  // so drive it until the published cost matches the chosen share.
+  for (let i = 0; i < 24; i += 1) {
+    const est = estimate(after.preview);
+    if (est && est.cost === want && String(after.sliderValue) === String(percent)) break;
+    await ctx.sleep(250);
+    if (i % 4 === 3) {
+      await setSlider(percent === 100 ? 99 : percent + 1);
+      await ctx.sleep(150);
+      await setSlider(percent);
+    } else if (i % 2 === 1) {
+      await setSlider(percent);
+    }
     after = await ctx.read();
-    if (String(after.sliderValue) === String(percent) && after.preview !== before.preview) break;
   }
   if (String(after.sliderValue) !== String(percent)) {
     throw new Error(`energy slider did not take ${percent}%`);
   }
   const est = estimate(after.preview);
-  const max = after.energy?.max;
-  const want = max ? Math.round((percent / 100) * max) : null;
   if (want != null && est && est.cost !== want) {
-    throw new Error(`energy slider shows ${est.cost} instead of ${want}`);
+    throw new Error(`energy slider shows ${est.cost} instead of ${want} (${after.preview.slice(0, 80)})`);
   }
   await clickGap(ctx);
   return ctx.read();
@@ -121,7 +153,7 @@ async function trainOnce(ctx, cfg, run, state) {
   const est = estimate(state.preview);
   const before = state.energy?.percent;
   const beforePotential = state.potential;
-  const label = `${stat} ${percent}%${est ? ` (${est.range})` : ''}`;
+  const label = `${stat} ${percent}%${est ? ` (${est.cost} energy, ${est.range})` : ''}`;
 
   await beforeClick(ctx);
   await clickOrThrow(ctx, SEL.gym.train, `train ${stat}`);
@@ -174,29 +206,36 @@ export async function startGym(ctx) {
       }
       ctx.log(
         'info',
-        `gym: open — energy ${state.energy?.percent ?? '?'}% · ${cfg.stat} at ${cfg.energyPercent}% per set`,
+        `gym: open — energy ${state.energy?.current ?? '?'}/${state.energy?.max ?? '?'} · turns ${state.turns?.current ?? '?'} · ${cfg.stat} at ${cfg.energyPercent}% per set`,
       );
 
       if (cfg.dryRun) {
-        if ((state.energy?.percent ?? 0) < 100) {
-          return `dry run — energy ${state.energy?.percent}%, would wait for 100% then train ${cfg.stat}`;
+        const have = state.energy?.current;
+        if (have == null) return 'dry run — energy meter not readable';
+        if (have < 1) {
+          return `dry run — energy ${have}/${state.energy?.max ?? '?'}, would wait for energy`;
         }
         state = await prepare(ctx, cfg, state);
         const est = estimate(state.preview);
-        return `dry run — would train ${cfg.stat}${est ? ` (${est.range})` : ''}${state.trainDisabled ? ' — button currently disabled' : ''}`;
+        const turns = turnCount(state);
+        const noTurn = turns != null && turns < 1 ? ' — no turns available' : '';
+        return `dry run — would train ${cfg.stat}${est ? ` (${est.range}, ${est.cost} energy)` : ''}${state.trainDisabled ? ' — button currently disabled' : ''}${noTurn}`;
       }
 
       while (!run.stopped) {
         if (run.sets >= cfg.maxSets) return `max sets (${cfg.maxSets})`;
-        state = await waitForFullEnergy(ctx, cfg, run);
+        state = await waitForEnergy(ctx, cfg, run);
         if (!state || run.stopped) return 'stopped';
+        requireTurn(state);
 
         while (!run.stopped && run.sets < cfg.maxSets) {
           state = await prepare(ctx, cfg, state);
           if (state.trainDisabled) {
             return `train disabled — ${state.status || state.preview || 'the game blocked the set'}`;
           }
-          if ((state.energy?.percent ?? 0) < Number(cfg.energyPercent)) break;
+          const need = energyNeed(cfg, state);
+          if ((state.energy?.current ?? 0) < (need ?? 1)) break;
+          requireTurn(state);
           state = await trainOnce(ctx, cfg, run, state);
         }
       }
@@ -208,7 +247,7 @@ export async function startGym(ctx) {
     if (run.stopped) return;
     report(ctx, run);
     ctx.log('info', `gym: finished — ${why} · ${run.sets} sets`);
-    ctx.status(/error/i.test(why) ? 'error' : /dry run|supporter|not logged in/i.test(why) ? 'paused' : 'idle', why);
+    ctx.status(/error/i.test(why) ? 'error' : /dry run|supporter|not logged in|no turns/i.test(why) ? 'paused' : 'idle', why);
     ctx.onEnd?.(why);
   });
 

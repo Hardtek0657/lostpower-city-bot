@@ -18,6 +18,8 @@ function extract(sel) {
   const focus = ['strength', 'speed', 'guard'].find(
     (k) => q(sel.gym.focus[k])?.classList.contains('is-selected'),
   ) ?? null;
+  const turnsText = text(q(sel.gym.turns));
+  const turns = turnsText.match(/(\d[\d,]*)\s*\/\s*(\d[\d,]*)/);
 
   return {
     route: location.hash,
@@ -36,6 +38,7 @@ function extract(sel) {
       current: pair ? num(pair[1]) : null,
       max: pair ? num(pair[2]) : null,
     },
+    turns: { current: turns ? num(turns[1]) : null, max: turns ? num(turns[2]) : null },
     focus,
     seenAt: Date.now(),
   };

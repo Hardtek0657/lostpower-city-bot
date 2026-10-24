@@ -45,8 +45,8 @@ export const features = [
         default: 'strength',
       },
       {
-        key: 'energyPercent', label: 'Energy per set (%)', type: 'select',
-        options: [25, 50, 100], default: 100,
+        key: 'energyPercent', label: 'Energy per set', type: 'select',
+        options: [5, 10, 25, 50, 100], default: 25,
       },
       { key: 'maxSets', label: 'Max sets', type: 'number', default: 10, min: 1, max: 1000 },
       { key: 'maxSessionMinutes', label: 'Session cap (min)', type: 'number', default: 240, min: 1, max: 1440 },

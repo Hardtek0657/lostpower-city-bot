@@ -17,6 +17,7 @@ export const SEL = {
     impact: '[data-testid="section-gym-workout-impact"]',
     potential: '[data-testid="section-gym-training-potential"]',
     playerEnergy: '[data-testid="meter-energy"]',
+    turns: '[data-testid="label-header-turns"]',
   },
   routes: {
     gym: '#/city/gym',
