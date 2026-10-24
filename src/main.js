@@ -274,8 +274,9 @@ function sanitizePatch(patch) {
       } else if (d.type === 'bool') {
         v = Boolean(v);
       } else if (d.type === 'select') {
-        // HTML selects hand back strings; options may be numbers (wager presets).
-        const match = d.options.find((o) => String(o) === String(v));
+        // HTML selects hand back strings; options may be numbers or {value,label}.
+        const values = d.options.map((o) => (o && typeof o === 'object' ? o.value : o));
+        const match = values.find((o) => String(o) === String(v));
         if (match === undefined) continue;
         v = match;
       }
@@ -496,11 +497,21 @@ async function selfTest() {
 
   // Feature wiring: every feature must expose a serializable view and its own reader.
   const vp = features.find((f) => f.id === 'video-poker');
+  const gym = features.find((f) => f.id === 'gym');
   const vpView = featureView(loadConfig()).find((f) => f.id === 'video-poker');
   checks.vpReader = typeof vp?.read === 'function';
+  checks.gymReader = typeof gym?.read === 'function';
   checks.vpView = !('read' in vpView) && !('start' in vpView);
 
   if (process.env.LPC_USER && checks.autoLogin) {
+    patchConfig({ features: { gym: { enabled: true, dryRun: true } } });
+    await startFeature('gym');
+    await new Promise((r) => setTimeout(r, 8000));
+    checks.gymOpen = logRing.some((e) => /gym: open/.test(e.msg));
+    checks.gymDry = logRing.some((e) => /gym: finished — dry run/.test(e.msg));
+    killAll('selftest');
+    patchConfig({ features: { gym: { enabled: false } } });
+
     patchConfig({ features: { 'video-poker': { enabled: true } } });
     await startFeature('video-poker');
     await new Promise((r) => setTimeout(r, 20_000));
@@ -525,7 +536,8 @@ async function selfTest() {
     checks.statsRender === '58.2k' && checks.agreeRender === '95%' &&
     (checks.autoLogin === undefined || checks.autoLogin) &&
     (checks.secretHidden === undefined || checks.secretHidden) &&
-    checks.vpReader && checks.vpView && checks.fold && checks.accountFold && checks.sorted && checks.authClear && checks.offGuard && checks.logPopout &&
+    checks.vpReader && checks.vpView && checks.gymReader && checks.fold && checks.accountFold && checks.sorted && checks.authClear && checks.offGuard && checks.logPopout &&
+    (checks.gymOpen === undefined || (checks.gymOpen && checks.gymDry)) &&
     (checks.vpOpen === undefined || checks.vpBlocked || (checks.vpOpen && checks.vpDry && !checks.vpBadVariant));
   console.log('SELFTEST ' + JSON.stringify({ ok, ...checks }));
   if (!ok) console.log('SELFTEST_LOG ' + JSON.stringify(logRing.slice(-15).map((e) => `${e.level} ${e.msg}`)));

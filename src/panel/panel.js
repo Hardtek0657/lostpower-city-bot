@@ -33,8 +33,9 @@ function settingRow(id, schema, value) {
     input = document.createElement('select');
     for (const opt of schema.options) {
       const o = document.createElement('option');
-      o.value = opt;
-      o.textContent = opt;
+      const value = opt && typeof opt === 'object' ? opt.value : opt;
+      o.value = String(value);
+      o.textContent = opt && typeof opt === 'object' ? opt.label : String(opt);
       input.append(o);
     }
     input.value = String(value);
@@ -66,8 +67,11 @@ let accountOpen = false;
 function summaryOf(f, cfg) {
   const parts = [];
   if (cfg.variant) parts.push(String(cfg.variant));
+  if (cfg.stat) parts.push(String(cfg.stat));
+  if (cfg.privateGym) parts.push('private gym');
   if (cfg.bet != null) parts.push(`bet ${cfg.bet}`);
   if (cfg.maxHands != null) parts.push(`${cfg.maxHands} hands`);
+  if (cfg.maxSets != null) parts.push(`${cfg.maxSets} sets`);
   return parts.join(' · ');
 }
 

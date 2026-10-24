@@ -278,7 +278,7 @@ export async function startVideoPoker(ctx) {
     if (run.stopped) return;
     report(ctx, run);
     ctx.log('info', `video poker: finished — ${why} · ${run.hands} hands · ${run.wins}W/${run.losses}L · credits ${run.credits ?? '?'}`);
-    ctx.status(/error/i.test(why) ? 'error' : /human check|dry run|travel required/i.test(why) ? 'paused' : 'idle', why);
+    ctx.status(/human check|dry run|travel required/i.test(why) ? 'paused' : /error/i.test(why) ? 'error' : 'idle', why);
     ctx.onEnd?.(why);
   });
 

@@ -1,4 +1,6 @@
 import { startBlackjack } from './blackjack/loop.js';
+import { startGym } from './gym/loop.js';
+import { readGym } from './gym/reader.js';
 import { startVideoPoker } from './video-poker/loop.js';
 import { readVideoPoker } from './video-poker/reader.js';
 import { VARIANTS } from './video-poker/cards.js';
@@ -23,6 +25,32 @@ export const features = [
       { key: 'dryRun', label: 'Dry run (no deal)', type: 'bool', default: true },
       { key: 'maxSessionMinutes', label: 'Session cap (min)', type: 'number', default: 60, min: 1, max: 720 },
       { key: 'allowTableFallback', label: 'Fallback to basic strategy', type: 'bool', default: true },
+    ],
+  },
+  {
+    id: 'gym',
+    label: 'Gym automation',
+    description: 'City Gym. Waits for full energy, then trains the chosen stat.',
+    start: startGym,
+    read: readGym,
+    settings: [
+      { key: 'privateGym', label: 'Use private gym (supporters)', type: 'bool', default: false },
+      {
+        key: 'stat', label: 'Train', type: 'select',
+        options: [
+          { value: 'strength', label: 'Strength' },
+          { value: 'speed', label: 'Speed' },
+          { value: 'guard', label: 'Guard' },
+        ],
+        default: 'strength',
+      },
+      {
+        key: 'energyPercent', label: 'Energy per set (%)', type: 'select',
+        options: [25, 50, 100], default: 100,
+      },
+      { key: 'maxSets', label: 'Max sets', type: 'number', default: 10, min: 1, max: 1000 },
+      { key: 'maxSessionMinutes', label: 'Session cap (min)', type: 'number', default: 240, min: 1, max: 1440 },
+      { key: 'dryRun', label: 'Dry run (no train)', type: 'bool', default: true },
     ],
   },
   {

@@ -5,9 +5,9 @@ in a window and puts a control panel next to it: each feature is a toggle with i
 session stats and status. Features read the live page, act at a human pace, and stop on their own
 limits or on anything that needs a person — no blind clicking.
 
-The first two features automate the Playland Casino. New features are added as modules in
-`src/bot/registry.js` and show up in the panel automatically, with their own settings, dry run and
-kill-switch behaviour.
+The first two features automate the Playland Casino; gym automation handles the City Gym. New
+features are added as modules in `src/bot/registry.js` and show up in the panel automatically, with
+their own settings, dry run and kill-switch behaviour.
 
 Automation is very likely against the game's rules — use a throwaway account.
 
@@ -16,6 +16,7 @@ Automation is very likely against the game's rules — use a throwaway account.
 | Feature | What it does | How it decides |
 |---|---|---|
 | [Blackjack autopilot](docs/blackjack.md) | Opens the Playland Casino blackjack table, reads each hand and plays it | Basic-strategy table by default (S17, DAS); optional model cross-check or full model play |
+| [Gym automation](docs/gym.md) | City Gym: waits for full energy, then trains Strength, Speed or Guard (private gym optional) | Deterministic energy gate and the chosen set size; no model |
 | [Video poker](docs/video-poker.md) | Plays Jacks or Better 9/6, Bonus Poker 8/5 and Deuces Wild | Exact expected value over all 32 hold patterns for the posted paytable |
 
 Both support dry run (open and prepare, never commit a bet), max hands, stop loss, a session time
@@ -52,9 +53,14 @@ src/
       selectors.js          Video-poker-specific DOM selectors
       cards.js              Card encoding, hand evaluation and paytables
       strategy.js           Expected-payout calculation for all hold patterns
+    gym/
+      loop.js               Route choice, energy gate, focus and training sets
+      reader.js             Gym state, energy meter and set preview
+      selectors.js          Gym-specific DOM selectors
 docs/
   recon.md                  Recorded DOM contract and rule observations
   blackjack.md              Feature doc: blackjack autopilot
+  gym.md                    Feature doc: gym automation
   video-poker.md            Feature doc: video poker
 Plan.md                     Design notes and implementation history
 package.json                Dependencies and scripts
