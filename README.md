@@ -18,13 +18,14 @@ Automation is very likely against the game's rules — use a throwaway account.
 | [Blackjack autopilot](docs/blackjack.md) | Opens the Playland Casino blackjack table, reads each hand and plays it | Basic-strategy table by default (S17, DAS); optional model cross-check or full model play |
 | [Gym automation](docs/gym.md) | City Gym: trains Strength, Speed or Guard at a chosen share of the energy bar (private gym optional) | Deterministic energy and turn checks; no model |
 | [Video poker](docs/video-poker.md) | Plays Jacks or Better 9/6, Bonus Poker 8/5 and Deuces Wild | Exact expected value over all 32 hold patterns for the posted paytable |
+| [Proxy](docs/proxy.md) | Routes the game view through an HTTP, HTTPS or SOCKS5 proxy, with optional username/password | Applied to the game session before the URL loads; fail-closed if the proxy is unreachable |
+| [Discord alerts](docs/alerts.md) | Webhook notices for new in-game alerts and e-mail, gym sets, gambling hands and session summaries | Polls the header counters and feature events; each kind has its own toggle |
 
-Both support dry run (open and prepare, never commit a bet), max hands, stop loss, a session time
-cap, human-paced clicking and a global kill switch.
+Blackjack and video poker support dry run (open and prepare, never commit a bet), max hands, stop loss,
+a session time cap, human-paced clicking and a global kill switch.
 
-Feature detail lives in its own document — `docs/blackjack.md` and `docs/video-poker.md` above. New
-features must add a `docs/<feature>.md` and link it from this table; see the documentation
-convention in [Plan.md](Plan.md#16b-documentation).
+Every row above links to its own document. New features must add a `docs/<feature>.md` and link it
+from this table; see the documentation convention in [Plan.md](Plan.md#16b-documentation).
 
 ## Project structure
 
