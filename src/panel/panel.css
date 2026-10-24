@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #05080b;
   --panel: #080d12;
   --line: #182430;
@@ -224,7 +224,7 @@ main {
 }
 .row input[type="checkbox"] { accent-color: var(--accent); }
 
-#account {
+#account, #proxy {
   margin: 0 10px 8px;
   padding: 9px 10px;
   border: 1px solid var(--line);
@@ -234,7 +234,7 @@ main {
   flex-direction: column;
   gap: 6px;
 }
-#account .name {
+#account .name, #proxy .name {
   font-weight: 700;
   letter-spacing: 0.4px;
   font-size: 11px;
@@ -242,7 +242,8 @@ main {
   text-transform: uppercase;
 }
 #account:not(.open) #acctBody { display: none; }
-#account.open .summary { display: none; }
+#proxy:not(.open) #proxyBody { display: none; }
+#account.open .summary, #proxy.open .summary { display: none; }
 .row input[type="text"],
 .row input[type="password"] {
   width: 150px;
@@ -253,7 +254,7 @@ main {
   border-radius: 3px;
   font: inherit;
 }
-#account button { width: auto; padding: 3px 10px; }
+#account button, #proxy button { width: auto; padding: 3px 10px; }
 .authBtns { display: flex; gap: 6px; }
 .hint { font-size: 10px; color: var(--muted); }
 
@@ -351,3 +352,4 @@ kbd {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: #1b2836; border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
+

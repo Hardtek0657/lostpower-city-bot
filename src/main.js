@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { features, featureView } from './bot/registry.js';
 import { readTable } from './bot/blackjack/reader.js';
 import { SEL } from './bot/selectors.js';
-import { loadConfig, patchConfig, publicConfig, resetConfigCache, configPath, getApiKey, setCredentials, getCredentials, clearCredentials } from './config.js';
+import { loadConfig, patchConfig, publicConfig, resetConfigCache, configPath, getApiKey, setCredentials, getCredentials, clearCredentials, setProxySettings, getProxyPassword } from './config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SELF_TEST = process.argv.includes('--self-test');
@@ -20,6 +20,39 @@ const running = new Map();
 let win = null;
 let logWin = null;
 let gameView = null;
+let proxyAuth = null;
+
+/**
+ * Apply the proxy to the game session. Must run before the game URL is loaded so no request
+ * ever leaves directly when a proxy is configured.
+ */
+async function applyProxy() {
+  const s = session.fromPartition('persist:lostpower');
+  const p = loadConfig().proxy ?? {};
+  proxyAuth = null;
+  if (!p.enabled || !p.host || !p.port) {
+    await s.setProxy({ mode: 'direct' });
+    log('app', 'info', 'proxy off — direct connection');
+    return null;
+  }
+  const scheme = ['http', 'https', 'socks5'].includes(p.protocol) ? p.protocol : 'http';
+  const rule = `${scheme}://${p.host}:${p.port}`;
+  await s.setProxy({ proxyRules: rule, proxyBypassRules: '<-loopback>' });
+  const password = await getProxyPassword();
+  if (p.username) proxyAuth = { username: p.username, password };
+  log('app', 'info', `proxy ${rule}${p.username ? ` · auth as ${p.username}` : ' · no auth'}`);
+  return rule;
+}
+
+app.on('login', (event, _wc, _details, authInfo, callback) => {
+  if (!authInfo?.isProxy) return;
+  event.preventDefault();
+  if (!proxyAuth) {
+    callback('', '');
+    return;
+  }
+  callback(proxyAuth.username, proxyAuth.password ?? '');
+});
 let status = { id: null, state: 'idle', detail: '' };
 let stats = null;
 
@@ -116,7 +149,7 @@ async function leaveCasinoIfIdle(wc) {
   log('app', 'info', 'left the casino page — no casino feature is on');
 }
 
-function createWindow() {
+async function createWindow() {
   win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -170,6 +203,8 @@ function createWindow() {
   wc.on('render-process-gone', (_e, details) =>
     log('app', 'error', 'game renderer gone', details));
 
+  // Proxy first: the game URL must never load over a direct connection when a proxy is set.
+  await applyProxy();
   wc.loadURL(loadConfig().game.url);
 
   win.on('resize', () => gameView?.setBounds(gameBounds()));
@@ -340,6 +375,14 @@ function registerIpc() {
     return { config: publicConfig() };
   });
 
+  ipcMain.handle('proxy:save', async (_e, payload) => {
+    const p = await setProxySettings(payload ?? {});
+    const rule = await applyProxy();
+    if (gameView) gameView.webContents.reload();
+    log('app', 'info', p.enabled && p.host ? `proxy saved — reloading through ${p.host}:${p.port}` : 'proxy disabled — direct connection');
+    return { config: publicConfig(), rule };
+  });
+
   ipcMain.handle('auth:save', async (_e, payload = {}) => {
     const autoLogin = Boolean(payload.autoLogin);
     const username = String(payload.username ?? '').slice(0, 64);
@@ -377,6 +420,9 @@ async function selfTest() {
 
   checks.panel = await win.webContents
     .executeJavaScript('!!document.querySelector("#panel") && !!window.bot')
+    .catch(() => false);
+  checks.proxyUi = await win.webContents
+    .executeJavaScript('["#proxyToggle","#proxyHost","#proxyPort","#proxyUser","#proxyPass","#saveProxy"].every((s) => !!document.querySelector(s))')
     .catch(() => false);
 
   patchConfig({ features: { blackjack: { enabled: true } } });
@@ -530,6 +576,19 @@ async function selfTest() {
     checks.shot = 'recon/panel.png';
   }
 
+  // Proxy wiring: the game session must resolve through a configured proxy, and the panel must
+  // never receive the proxy password.
+  {
+    const s = session.fromPartition('persist:lostpower');
+    const saved = structuredClone(loadConfig().proxy);
+    await s.setProxy({ proxyRules: 'http://127.0.0.1:9', proxyBypassRules: '<-loopback>' });
+    const resolved = await s.resolveProxy('https://lostpower.com');
+    checks.proxyResolve = /127\.0\.0\.1:9/.test(resolved);
+    await setProxySettings({ ...saved, password: undefined });
+    await applyProxy();
+    checks.proxyHidden = !('passwordEnc' in publicConfig().proxy);
+  }
+
   const ok =
     checks.game.startsWith('complete|') && checks.panel && checks.persist && checks.betPatch && checks.betRoundTrip &&
     checks.started && checks.stopped && checks.killed && checks.shortcut &&
@@ -537,6 +596,7 @@ async function selfTest() {
     (checks.autoLogin === undefined || checks.autoLogin) &&
     (checks.secretHidden === undefined || checks.secretHidden) &&
     checks.vpReader && checks.vpView && checks.gymReader && checks.fold && checks.accountFold && checks.sorted && checks.authClear && checks.offGuard && checks.logPopout &&
+    checks.proxyResolve && checks.proxyHidden && checks.proxyUi &&
     (checks.gymOpen === undefined || (checks.gymOpen && checks.gymDry)) &&
     (checks.vpOpen === undefined || checks.vpBlocked || (checks.vpOpen && checks.vpDry && !checks.vpBadVariant));
   console.log('SELFTEST ' + JSON.stringify({ ok, ...checks }));
@@ -546,7 +606,7 @@ async function selfTest() {
 
 app.whenReady().then(async () => {
   registerIpc();
-  createWindow();
+  await createWindow();
   log('app', 'info', 'ready');
 
   const registered = globalShortcut.register('Control+Shift+X', () => killAll('ctrl+shift+x'));

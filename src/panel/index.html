@@ -38,6 +38,31 @@
         </div>
       </section>
 
+      <section id="proxy">
+        <button class="disclosure" id="proxyToggle" type="button" aria-expanded="false" aria-controls="proxyBody">
+          <span class="chev">▸</span><span class="name">PROXY</span>
+        </button>
+        <p class="summary" id="proxySummary"></p>
+        <div id="proxyBody">
+          <label class="row"><span>Use proxy</span><input type="checkbox" id="proxyEnabled"></label>
+          <label class="row"><span>Protocol</span>
+            <select id="proxyProtocol">
+              <option value="http">HTTP</option>
+              <option value="https">HTTPS</option>
+              <option value="socks5">SOCKS5</option>
+            </select>
+          </label>
+          <label class="row"><span>Host</span><input id="proxyHost" type="text" spellcheck="false" placeholder="127.0.0.1"></label>
+          <label class="row"><span>Port</span><input id="proxyPort" type="number" min="1" max="65535" placeholder="8080"></label>
+          <label class="row"><span>Username</span><input id="proxyUser" type="text" spellcheck="false" autocomplete="off" placeholder="blank for IP allowlist"></label>
+          <label class="row"><span>Password</span><input id="proxyPass" type="password" autocomplete="off"></label>
+          <div class="row">
+            <span id="proxyState" class="hint"></span>
+            <span class="authBtns"><button id="saveProxy" type="button">save</button></span>
+          </div>
+        </div>
+      </section>
+
       <section id="session" hidden>
         <div class="statrow">
           <span>HANDS <b id="st-hands">0</b></span>

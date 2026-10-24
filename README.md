@@ -61,6 +61,7 @@ docs/
   recon.md                  Recorded DOM contract and rule observations
   blackjack.md              Feature doc: blackjack autopilot
   gym.md                    Feature doc: gym automation
+  proxy.md                  Network proxy setup and guarantees
   video-poker.md            Feature doc: video poker
 Plan.md                     Design notes and implementation history
 package.json                Dependencies and scripts
@@ -159,6 +160,13 @@ before the bot notices, and the trigger cadence is not mapped yet, so it may be 
 `%APPDATA%\lostpower-bot\config.json` — router URL, model ids, feature settings. The API key
 (when set) is encrypted with Windows DPAPI via Electron `safeStorage`. Feature defaults are listed
 in each feature's document ([blackjack](docs/blackjack.md), [video poker](docs/video-poker.md)).
+
+## Proxy
+
+Optional HTTP / HTTPS / SOCKS5 proxy for the game view, configured in the **PROXY** card and saved
+in `config.json` (password encrypted with the OS keystore). It is applied to the game session before
+the game URL loads, so no request leaves over a direct connection when it is enabled. Credentials are
+optional — leave both blank for IP-allowlist proxies. See [docs/proxy.md](docs/proxy.md).
 
 ## Tests
 

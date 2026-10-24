@@ -14,6 +14,7 @@ const DEFAULTS = {
   router: { baseUrl: 'http://127.0.0.1:20128/v1', apiKeyEnc: '' },
   models: { decision: 'cx/gpt-6-luna(max)', vision: 'ds/deepseek-v4-flash-vision-exp' },
   game: { url: 'https://lostpower.com/', autoLogin: false, username: '' },
+  proxy: { enabled: false, protocol: 'http', host: '', port: 0, username: '', passwordEnc: '' },
   features: featureDefaults,
 };
 
@@ -59,9 +60,11 @@ export function patchConfig(patch) {
 export function publicConfig() {
   const c = loadConfig();
   const { passwordEnc, ...game } = c.game;
+  const { passwordEnc: proxyPass, ...proxy } = c.proxy;
   return {
     ...c,
     game: { ...game, hasPassword: Boolean(passwordEnc) },
+    proxy: { ...proxy, hasPassword: Boolean(proxyPass) },
     router: { baseUrl: c.router.baseUrl, hasApiKey: Boolean(c.router.apiKeyEnc) },
   };
 }
@@ -107,6 +110,46 @@ export async function getCredentials() {
     return { user: c.game.username, pass: value };
   } catch {
     return { user: c.game.username, pass: '' };
+  }
+}
+
+export async function setProxySettings({ enabled, protocol, host, port, username, password }) {
+  const c = loadConfig();
+  c.proxy.enabled = Boolean(enabled);
+  c.proxy.protocol = ['http', 'https', 'socks5'].includes(protocol) ? protocol : 'http';
+  c.proxy.host = String(host ?? '').trim().slice(0, 255);
+  const n = Number(port);
+  c.proxy.port = Number.isFinite(n) ? Math.min(65535, Math.max(0, Math.round(n))) : 0;
+  c.proxy.username = String(username ?? '').trim().slice(0, 128);
+  if (password !== undefined) {
+    c.proxy.passwordEnc = '';
+    if (password) {
+      try {
+        if (await safeStorage.isAsyncEncryptionAvailable()) {
+          c.proxy.passwordEnc = (await safeStorage.encryptStringAsync(String(password))).toString('base64');
+        }
+      } catch {
+        c.proxy.passwordEnc = '';
+      }
+    }
+  }
+  saveConfig();
+  return c.proxy;
+}
+
+export async function getProxyPassword() {
+  const enc = loadConfig().proxy.passwordEnc;
+  if (!enc) return '';
+  try {
+    const { value, reencrypt } = await decryptValue(enc);
+    if (reencrypt && value) {
+      const c = loadConfig();
+      c.proxy.passwordEnc = (await safeStorage.encryptStringAsync(value)).toString('base64');
+      saveConfig();
+    }
+    return value;
+  } catch {
+    return '';
   }
 }
 

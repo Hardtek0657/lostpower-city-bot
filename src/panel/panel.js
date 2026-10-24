@@ -63,6 +63,7 @@ function settingRow(id, schema, value) {
 
 const expanded = new Set();
 let accountOpen = false;
+let proxyOpen = false;
 
 function summaryOf(f, cfg) {
   const parts = [];
@@ -187,8 +188,22 @@ function paintAccount() {
   $('#acctToggle').setAttribute('aria-expanded', String(accountOpen));
 }
 
-function addLog(entry) {
-  const li = document.createElement('li');
+function paintProxy() {
+  const p = state.config?.proxy ?? {};
+  $('#proxyEnabled').checked = Boolean(p.enabled);
+  $('#proxyProtocol').value = p.protocol ?? 'http';
+  $('#proxyHost').value = p.host ?? '';
+  $('#proxyPort').value = p.port || '';
+  $('#proxyUser').value = p.username ?? '';
+  $('#proxyPass').value = '';
+  $('#proxyPass').placeholder = p.hasPassword ? '•••• saved' : 'blank for IP allowlist';
+  $('#proxyState').textContent = p.hasPassword ? 'password saved' : '';
+  $('#proxySummary').textContent = p.enabled && p.host ? `${p.protocol ?? 'http'}://${p.host}:${p.port}` : 'off';
+  $('#proxy').classList.toggle('open', proxyOpen);
+  $('#proxyToggle').setAttribute('aria-expanded', String(proxyOpen));
+}
+
+function addLog(entry) {  const li = document.createElement('li');
   li.className = LEVELS.includes(entry.level) ? entry.level : 'info';
   const time = String(entry.t).slice(11, 19);
   li.textContent = `${time} ${entry.msg}`;
@@ -205,6 +220,7 @@ async function init() {
   paintStatus();
   paintStats(state.stats ?? null);
   paintAccount();
+  paintProxy();
   for (const entry of state.log) addLog(entry);
 
   window.bot.onLog(addLog);
@@ -239,6 +255,32 @@ async function init() {
     state.config = res.config;
     paintAccount();
     $('#authState').textContent = 'saved';
+  });
+
+  $('#proxyToggle').addEventListener('click', () => {
+    proxyOpen = !proxyOpen;
+    paintProxy();
+  });
+  $('#saveProxy').addEventListener('click', async () => {
+    const enabled = $('#proxyEnabled').checked;
+    const host = $('#proxyHost').value.trim();
+    const port = Number($('#proxyPort').value);
+    if (enabled && (!host || !port)) {
+      $('#proxyState').textContent = 'host and port are required';
+      return;
+    }
+    const password = $('#proxyPass').value;
+    const res = await window.bot.saveProxy({
+      enabled,
+      protocol: $('#proxyProtocol').value,
+      host,
+      port,
+      username: $('#proxyUser').value.trim(),
+      ...(password ? { password } : {}),
+    });
+    state.config = res.config;
+    paintProxy();
+    $('#proxyState').textContent = res.rule ? `applied · ${res.rule}` : 'applied · direct';
   });
 }
 
