@@ -115,13 +115,30 @@ async function waitForEnergy(ctx, cfg, run) {
   }
 }
 
-async function prepare(ctx, cfg, state) {
-  const stat = cfg.stat;
-  if (state.focus !== stat) {
+async function selectFocus(ctx, stat, state) {
+  const wanted = stat.toUpperCase();
+  const ok = (s) => s.focus === stat && estimate(s.preview)?.stat === wanted;
+  if (ok(state)) return state;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     await beforeClick(ctx);
     await clickOrThrow(ctx, SEL.gym.focus[stat], `focus ${stat}`);
-    await ctx.sleep(250);
+    for (let i = 0; i < 10; i += 1) {
+      await ctx.sleep(150);
+      state = await ctx.read();
+      if (ok(state)) {
+        ctx.log('info', `gym: focus ${stat}`);
+        return state;
+      }
+    }
   }
+  throw new Error(
+    `could not select ${stat} (focus ${state.focus ?? 'none'}, preview ${estimate(state.preview)?.stat ?? '?'})`,
+  );
+}
+
+async function prepare(ctx, cfg, state) {
+  const stat = cfg.stat;
+  state = await selectFocus(ctx, stat, state);
   const need = needPct(cfg);
   let havePct = state.energy?.percent;
   if (havePct == null) {
@@ -131,6 +148,7 @@ async function prepare(ctx, cfg, state) {
   const current = state.energy?.current ?? null;
   const sliderPct = sliderForPct(need, havePct);
   if (sliderPct == null) throw new Error('energy meter not readable');
+  const expected = current ? Math.max(1, Math.floor((current * sliderPct) / 100)) : null;
   const setSlider = (value) => ctx.eval(`(() => {
     const el = document.querySelector(${J(SEL.gym.energy)});
     if (!el) return false;
@@ -146,7 +164,8 @@ async function prepare(ctx, cfg, state) {
   // so drive it until the published cost matches the requested amount.
   for (let i = 0; i < 24; i += 1) {
     const est = estimate(after.preview);
-    if (est && est.cost === need && String(after.sliderValue) === String(sliderPct)) break;
+    const costOk = expected == null || !est || Math.abs(est.cost - expected) <= 1;
+    if (costOk && String(after.sliderValue) === String(sliderPct)) break;
     await ctx.sleep(250);
     if (i % 4 === 3) {
       await setSlider(sliderPct === 100 ? 99 : sliderPct + 1);
@@ -161,12 +180,29 @@ async function prepare(ctx, cfg, state) {
     throw new Error(`energy slider did not take ${sliderPct}%`);
   }
   const est = estimate(after.preview);
-  const expected = current ? Math.max(1, Math.floor((current * sliderPct) / 100)) : null;
   if (expected != null && est && Math.abs(est.cost - expected) > 1) {
     throw new Error(`energy slider shows ${est.cost} instead of ~${expected} (${after.preview.slice(0, 80)})`);
   }
+  const done = await ctx.read();
+  if (done.focus !== stat) {
+    throw new Error(`focus is ${done.focus ?? 'unset'}, expected ${stat}`);
+  }
+  const pending = estimate(done.preview);
+  if (pending && pending.stat !== stat.toUpperCase()) {
+    throw new Error(`preview is for ${pending.stat}, expected ${stat.toUpperCase()}`);
+  }
   await clickGap(ctx);
-  return ctx.read();
+  return done;
+}
+
+async function waitForEnabled(ctx, run, state, ms = 45_000) {
+  const end = Date.now() + ms;
+  while (!run.stopped && Date.now() < end) {
+    if (!state.trainDisabled) return state;
+    await ctx.sleep(1000);
+    state = await ctx.read();
+  }
+  return run.stopped ? null : state;
 }
 
 function statValue(potential, stat) {
@@ -258,7 +294,13 @@ export async function startGym(ctx) {
         while (!run.stopped) {
           state = await prepare(ctx, cfg, state);
           if (state.trainDisabled) {
-            return `train disabled — ${state.status || state.preview || 'the game blocked the set'}`;
+            // The table cools down for a few seconds between sets.
+            state = await waitForEnabled(ctx, run, state);
+            if (!state) return 'stopped';
+            if (state.trainDisabled) {
+              return `train disabled — ${state.status || state.preview || 'the game blocked the set'}`;
+            }
+            state = await prepare(ctx, cfg, state);
           }
           const need = needPct(cfg);
           if ((state.energy?.percent ?? 0) < need) break;

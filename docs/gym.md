@@ -28,6 +28,8 @@ restarts.
   or a real blocker (no turns, restricted gym, unreadable page).
 - Each set costs a turn, so the loop also checks the header turn counter and refuses to start a set
   at zero turns, pausing with `no turns available` instead of clicking into a blocked action.
+- The chosen stat is confirmed twice before a click: the focus card must carry `is-selected` **and**
+  the preview must read `ESTIMATED <STAT>` for that stat.
 - The estimated gain, energy cost, confidence cost, exp and turn cost are read from the preview
   before each click; the result is reported from the stat snapshot delta (e.g. `strength 14 → 15`).
 
@@ -51,6 +53,10 @@ spends nothing; at a 0% bar it waits as well.
 - **Private floor restricted** — pauses with the Supporter message.
 - **Not logged in** — pauses instead of clicking a login form.
 - **No turns** — pauses with `no turns available` before wasting a click.
+- **Focus not confirmed** — the click is retried until both the card and the preview name the chosen
+  stat; a stuborn mismatch errors instead of training the wrong stat.
+- **Cooldown** — between sets the game disables the button (`COOLING DOWN Next set in 3s`); the loop
+  waits for it to re-enable, then re-reads the preview before clicking.
 - **Train disabled** — the preview/status text is surfaced (low confidence, busy, etc.).
 - **Slider did not take** — the loop verifies the slider value and the set cost match the chosen
   percentage before training, otherwise it errors instead of spending the wrong amount.
