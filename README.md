@@ -16,7 +16,7 @@ Automation is very likely against the game's rules — use a throwaway account.
 | Feature | What it does | How it decides |
 |---|---|---|
 | [Blackjack autopilot](docs/blackjack.md) | Opens the Playland Casino blackjack table, reads each hand and plays it | Basic-strategy table by default (S17, DAS); optional model cross-check or full model play |
-| [Gym automation](docs/gym.md) | City Gym: trains Strength, Speed or Guard at a chosen share of current energy (private gym optional) | Deterministic energy and turn checks; no model |
+| [Gym automation](docs/gym.md) | City Gym: trains Strength, Speed or Guard at a chosen share of max energy (private gym optional) | Deterministic energy and turn checks; no model |
 | [Video poker](docs/video-poker.md) | Plays Jacks or Better 9/6, Bonus Poker 8/5 and Deuces Wild | Exact expected value over all 32 hold patterns for the posted paytable |
 
 Both support dry run (open and prepare, never commit a bet), max hands, stop loss, a session time

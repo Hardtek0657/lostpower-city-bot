@@ -16,12 +16,14 @@ restarts.
 
 ## Energy and turns
 
-- **Energy per set** is a share of the *current* bar, exactly like the game's slider: the set costs
-  `max(1, floor(share × current energy))`. On a 150 bar, 25% spends 37 when full but 3 when the bar
-  is down to 15.
-- The loop polls the energy meter and waits while the bar is empty; it trains as soon as there is
-  energy for the chosen share. It keeps training while the remaining bar still covers another set,
-  so with 25% per set it works a full bar down to zero before waiting for regeneration.
+- **Energy per set** is a share of the **full** bar: 25% on a 150 bar means 38 energy, 100% means a
+  full bar. The loop waits until the bar holds that much, so `100%` only trains at full energy and
+  `25%` trains once the bar has at least 38.
+- The game's own slider is a share of the *current* bar, so the bot converts: to spend 38 out of 150
+  it sets the slider to 25%; to spend 38 out of 60 it sets it to 63%. The published preview cost is
+  verified against the requested amount before the click.
+- It keeps training while the remaining bar can still fund the chosen amount, then waits for
+  regeneration.
 - There is **no set limit and no session cap**: the feature runs until you stop it, the kill switch,
   or a real blocker (no turns, restricted gym, unreadable page).
 - Each set costs a turn, so the loop also checks the header turn counter and refuses to start a set
@@ -35,14 +37,14 @@ restarts.
 |---|---|---|
 | privateGym | off | use `#/city/private-gym`; requires an active Supporter |
 | stat | strength | `strength`, `speed` or `guard` (the game calls defence "Guard") |
-| energyPercent | 25 | 5, 10, 25, 50 or 100 percent of current energy per set |
+| energyPercent | 25 | 5, 10, 25, 50 or 100 percent of max energy per set |
 | dryRun | on | prepares focus and set size, never trains |
 
 ## Observed
 
-2026-10-23 on the test account: full energy 150/150, strength, 100% per set → one set, energy
-150 → 0, 1 turn spent, preview `+51 – +61`. With a 30-energy bar: 5% → 1 energy (`+1`), 100% → 30
-energy (`+8 – +10`). A dry run on an empty bar reports `would wait for energy` and spends nothing.
+2026-10-23 on the test account: at 150/150 energy, 100% per set → one set, energy 150 → 0, 1 turn,
+preview `+51 – +61`. At 15/150 with 10% per set → 15 energy spent, `+4 – +5`, strength 73 → 77.
+At 15/150 with 25% or 100% the run waits (`waiting for energy (15/38 …)`) and spends nothing.
 
 ## Failure modes
 
