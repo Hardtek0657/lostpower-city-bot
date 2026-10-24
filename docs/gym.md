@@ -1,4 +1,4 @@
-﻿# Gym automation
+# Gym automation
 
 Opens the City Gym, waits for full energy, then trains the chosen stat. No model and no image
 reading: the page reports energy, the selected focus, the set cost and the estimated gain, and the
@@ -23,7 +23,9 @@ restarts.
 - The game's own slider is a percentage of whatever is in the bar, so the bot converts: holding 40%
   and spending 10 points sets the slider to 25%; holding 100% and spending 25 points sets 25%. The
   preview cost is verified before the click (rounded to the nearest whole energy).
-- It keeps training while the bar still covers the chosen points, then waits for regeneration.
+- It keeps training while the bar still covers the chosen points, then waits for regeneration. The
+  header meter is a server snapshot that does not tick on its own, so every 30 s the bot reloads the
+  page (`gym: refreshing page to read energy`) and re-reads the fresh value.
 - There is **no set limit and no session cap**: the feature runs until you stop it, the kill switch,
   or a real blocker (no turns, restricted gym, unreadable page).
 - Each set costs a turn, so the loop also checks the header turn counter and refuses to start a set
