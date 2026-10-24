@@ -128,6 +128,7 @@ async function waitForEnergy(ctx, cfg, run) {
     ctx.log('info', 'gym: refreshing page to read energy');
     await reload(ctx);
     state = await ensurePage(ctx, cfg);
+    ctx.log('info', `gym: energy ${state.energy?.percent ?? '?'}% (need ${need}%)`);
   }
 }
 
