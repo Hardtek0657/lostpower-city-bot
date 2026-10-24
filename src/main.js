@@ -6,7 +6,7 @@ import { features, featureView } from './bot/registry.js';
 import { readTable } from './bot/blackjack/reader.js';
 import { SEL } from './bot/selectors.js';
 import { loadConfig, patchConfig, publicConfig, resetConfigCache, configPath, getApiKey, setCredentials, getCredentials, clearCredentials, setProxySettings, getProxyPassword, clearProxyAuth, setAlertSettings, getWebhook } from './config.js';
-import { notify, sendTest } from './alerts.js';
+import { notify, sendTest, whyNot } from './alerts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SELF_TEST = process.argv.includes('--self-test');
@@ -289,7 +289,13 @@ async function startFeature(id) {
       stats = { id, ...s };
       win?.webContents.send('stats', stats);
     },
-    notify: (kind, title, body) => notify(kind, title, body),
+    notify: async (kind, title, body) => {
+      const sent = await notify(kind, title, body);
+      if (!sent) {
+        log(id, 'warn', `alert not sent (${kind}) — ${whyNot(kind) ?? 'webhook missing or delivery failed'}`);
+      }
+      return sent;
+    },
     onEnd: (why) => {
       const ended = stats?.id === id ? stats : null;
       if (ended) {
@@ -440,7 +446,8 @@ function registerIpc() {
       return { error: e.message };
     }
     scheduleAlerts();
-    log('app', 'info', loadConfig().alerts.enabled ? 'alerts on' : 'alerts off');
+    const a = loadConfig().alerts;
+    log('app', 'info', `alerts ${a.enabled ? 'on' : 'off'}${a.webhookEnc ? ' · webhook saved' : ' · no webhook'}`);
     return { config: publicConfig() };
   });
 
@@ -682,7 +689,9 @@ async function selfTest() {
     });
     await new Promise((r) => srv.listen(0, '127.0.0.1', r));
     const { port } = srv.address();
-    await setAlertSettings({ enabled: true, webhook: `http://127.0.0.1:${port}/hook`, pollSeconds: 60 });
+    await setAlertSettings({ enabled: false, webhook: `http://127.0.0.1:${port}/hook`, pollSeconds: 60 });
+    checks.alertMuted = (await notify('gym', 'Gym set', 'muted')) === false;
+    await setAlertSettings({ enabled: true });
     await notify('gym', 'Gym set', 'selftest delivery');
     await new Promise((r) => setTimeout(r, 800));
     checks.alertDelivered = received.some((b) => /Gym set/.test(b));
@@ -700,7 +709,7 @@ async function selfTest() {
     (checks.secretHidden === undefined || checks.secretHidden) &&
     checks.vpReader && checks.vpView && checks.gymReader && checks.fold && checks.accountFold && checks.sorted && checks.authClear && checks.offGuard && checks.logPopout &&
     checks.proxyResolve && checks.proxyHidden && checks.proxyUi &&
-    checks.alertsUi && checks.alertDelivered && checks.alertsHidden &&
+    checks.alertsUi && checks.alertDelivered && checks.alertsHidden && checks.alertMuted &&
     (checks.gymOpen === undefined || (checks.gymOpen && checks.gymDry)) &&
     (checks.vpOpen === undefined || checks.vpBlocked || (checks.vpOpen && checks.vpDry && !checks.vpBadVariant));
   console.log('SELFTEST ' + JSON.stringify({ ok, ...checks }));
@@ -712,6 +721,10 @@ app.whenReady().then(async () => {
   registerIpc();
   await createWindow();
   scheduleAlerts();
+  {
+    const a = loadConfig().alerts;
+    log('app', 'info', `alerts ${a.enabled ? 'on' : 'off'}${a.webhookEnc ? ' · webhook saved' : ' · no webhook'}`);
+  }
   log('app', 'info', 'ready');
 
   const registered = globalShortcut.register('Control+Shift+X', () => killAll('ctrl+shift+x'));

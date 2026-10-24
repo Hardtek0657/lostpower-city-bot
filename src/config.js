@@ -173,7 +173,7 @@ export async function getProxyPassword() {
   }
 }
 
-const DISCORD_HOOK = /^https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
+const DISCORD_HOOK = /^https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+(?:\?\S*)?\/?$/i;
 const LOOPBACK_HOOK = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/\S*$/i;
 
 export async function setAlertSettings({

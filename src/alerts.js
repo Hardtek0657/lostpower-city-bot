@@ -30,6 +30,17 @@ export function kindAllowed(kind) {
   return key ? Boolean(a[key]) : false;
 }
 
+/** Why a notification of this kind would be skipped, or null when it can be sent. */
+export function whyNot(kind) {
+  const a = loadConfig().alerts ?? {};
+  if (!a.enabled) return 'alerts are off';
+  const key = KINDS[kind];
+  if (!key) return `unknown kind "${kind}"`;
+  if (!a[key]) return `${kind} alerts are muted`;
+  if (!a.webhookEnc) return 'no webhook saved';
+  return null;
+}
+
 /** Queue a Discord notification. Returns false when the kind is disabled or nothing is configured. */
 export async function notify(kind, title, body) {
   if (!kindAllowed(kind)) return false;

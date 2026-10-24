@@ -217,7 +217,7 @@ function paintAlerts() {
   $('#alertsOnSession').checked = a.onSession !== false;
   $('#alertsSummary').textContent = a.enabled
     ? (a.hasWebhook ? 'discord webhook saved' : 'enabled · no webhook')
-    : 'off';
+    : (a.hasWebhook ? 'webhook saved · alerts off' : 'off');
   $('#alerts').classList.toggle('open', alertsOpen);
   $('#alertsToggle').setAttribute('aria-expanded', String(alertsOpen));
 }
@@ -317,7 +317,9 @@ async function init() {
   $('#testAlerts').addEventListener('click', async () => {
     $('#alertsState').textContent = 'sending…';
     const res = await window.bot.testAlerts();
-    $('#alertsState').textContent = res.sent ? 'test sent' : 'test failed — check the webhook';
+    $('#alertsState').textContent = res.sent
+      ? (state.config?.alerts?.enabled ? 'test sent' : 'test sent · alerts are off')
+      : 'test failed — check the webhook';
   });
   $('#saveAlerts').addEventListener('click', async () => {
     const webhook = $('#alertsWebhook').value.trim();
@@ -337,7 +339,9 @@ async function init() {
     }
     state.config = res.config;
     paintAlerts();
-    $('#alertsState').textContent = res.config.alerts.enabled ? 'saved · watching' : 'saved · off';
+    $('#alertsState').textContent = res.config.alerts.enabled
+      ? 'saved · watching'
+      : (res.config.alerts.hasWebhook ? 'saved · off — tick Discord alerts to send' : 'saved · off');
   });
 }
 
