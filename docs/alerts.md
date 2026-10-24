@@ -12,9 +12,21 @@ Sends Discord webhook messages so you get a ping without watching the game windo
 | Gambling hands | one message per blackjack / video-poker hand with its result | on |
 | Session summary | a feature ends: hands played, P/L and why it stopped | on |
 
-The alert watcher reads the header counters (`Alerts (n)`, `E-Mail (n)`) on the interval set by
-**Poll (s)** (default 60, minimum 15). The first poll only records the baseline, so existing unread
-mail does not fire on startup; only an increase triggers a message.
+The watcher reads the game's own JSON API from inside the page (session cookies included), so it
+does not need a page refresh:
+
+- `https://lpc-api.lostpower.com/api/alerts?limit=3&offset=0` → `unreadCount` + the newest alert's
+  title and message.
+- `https://lpc-api.lostpower.com/api/mail/summary` → `unreadCount`.
+
+If either call fails the watcher falls back to the header counters (`Alerts (n)`, `E-Mail (n)`),
+reading both the side nav text and the mobile `aria-label`.
+
+The last seen counts **and the last alert id** are persisted in `config.json`, so:
+
+- an alert that arrived while the app was closed is reported on the next launch (once);
+- restarting does not re-report the same alert;
+- a new alert is detected even when an older one is still unread (same count, new id).
 
 ## Setup
 
@@ -44,4 +56,11 @@ back to the panel — it shows `•••• saved`. Only `https://discord.com/a
   "title":"Gym set complete",
   "description":"strength 25% (37 energy, +17 – +21) · strength 77 → 94 · energy 60% → 35%",
   "color": 5111656, "timestamp": "…"}]}
+```
+
+In-game alerts include the alert itself:
+
+```json
+{"title":"New in-game alert",
+ "description":"Mining Shift Complete: Old Iron Shaft has finished. Your sealed shift report is waiting at the Mining District for collection."}
 ```

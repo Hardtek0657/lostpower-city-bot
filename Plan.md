@@ -357,7 +357,7 @@ Results are scored from the final five cards against the paytable, not from the 
 | Automation against the game's rules | Account action | Test account, human pacing, caps, stop on challenge; accept the risk explicitly |
 | Casino presence check after sustained play | Run stops | Detected (`CASINO_PRESENCE_REQUIRED`), bot stops and asks for a human instead of answering it |
 | Proxy misconfigured or down | Game unreachable | Fail-closed on purpose: no direct fallback; startup log names the proxy, panel shows the failed load |
-| Header counters are a server snapshot | Alerts can lag until the page refreshes | Watcher re-reads on the poll interval; forced reload is an open question (§18) |
+| Alerts/mail API unavailable (auth or schema change) | Missed alert notifications | Watcher falls back to the header counters; persisted lastSeen still reports unread on the next poll |
 | Discord rate limits | Dropped notifications | Serialized queue, `429` `retry_after` retry, 8 s throttle for gambling hands |
 | Max energy changes | Gym gate drift | Gate and spend use percentages of the bar, never absolute energy |
 | 9router down / key rotated | No decisions | Table fallback keeps playing legally; banner in panel |
@@ -369,8 +369,8 @@ Results are scored from the final five cards against the paytable, not from the 
 3. Add the vision reader later as a cross-check once the loop has a few hundred hands?
 4. Auto-travel to Playland (and other districts) when a feature needs it — deferred by the owner.
 5. Presence-check trigger cadence: one observation (`sustained_play`) so far; is it time-based?
-6. Should the alert watcher force a page reload on its poll so in-game alerts arrive promptly, at
-   the cost of a visible blink?
+6. ~~Should the alert watcher force a page reload?~~ Resolved: it reads lpc-api alerts/mail
+   endpoints from inside the page, so counters refresh without a visible reload.
 7. Gambling alerts: is one message per hand (8 s throttle) useful, or should it be wins/big wins only?
 
 ## 19. Definition of done (v1)

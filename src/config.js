@@ -24,6 +24,7 @@ const DEFAULTS = {
     onGym: true,
     onGambling: true,
     onSession: true,
+    lastSeen: { alerts: 0, mail: 0, alertId: null },
   },
   features: featureDefaults,
 };

@@ -23,25 +23,36 @@ let logWin = null;
 let gameView = null;
 let proxyAuth = null;
 
-const ALERT_COUNTS_JS = `(() => {
-  const pick = (sel) => {
-    const el = document.querySelector(sel);
-    const m = (el?.innerText ?? '').match(/\\((\\d+)\\)/);
+const ALERT_COUNTS_JS = `(async () => {
+  const get = (url) => fetch(url, { credentials: 'include' })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  const num = (s) => {
+    const m = String(s ?? '').match(/(\\d+)/);
     return m ? Number(m[1]) : null;
   };
-  const alerts = pick('[data-testid="link-sideNav-messages-alerts"]');
-  const mail = pick('[data-testid="link-sideNav-messages-mailbox"]');
-  if (alerts == null && mail == null) return null;
-  return { alerts: alerts ?? 0, mail: mail ?? 0 };
+  const [alerts, mail] = await Promise.all([
+    get('https://lpc-api.lostpower.com/api/alerts?limit=3&offset=0'),
+    get('https://lpc-api.lostpower.com/api/mail/summary'),
+  ]);
+  const domAlerts = num(document.querySelector('[data-testid="link-sideNav-messages-alerts"]')?.innerText)
+    ?? num(document.querySelector('[data-testid="link-mobileAlerts"]')?.getAttribute('aria-label'));
+  const domMail = num(document.querySelector('[data-testid="link-sideNav-messages-mailbox"]')?.innerText)
+    ?? num(document.querySelector('[data-testid="link-mobileMail"]')?.getAttribute('aria-label'));
+  if (!alerts && !mail && domAlerts == null && domMail == null) return null;
+  const newest = alerts?.alerts?.find((a) => a && !a.read) ?? alerts?.alerts?.[0] ?? null;
+  return {
+    alerts: alerts?.unreadCount ?? domAlerts ?? 0,
+    mail: mail?.unreadCount ?? domMail ?? 0,
+    newest: newest ? { id: newest.id, title: newest.title, message: newest.message ?? newest.text ?? '' } : null,
+  };
 })()`;
 
 let alertTimer = null;
-let alertBaseline = null;
 
 function scheduleAlerts() {
   clearInterval(alertTimer);
   alertTimer = null;
-  alertBaseline = null;
   const a = loadConfig().alerts ?? {};
   if (!a.enabled) return;
   const ms = Math.max(15, Number(a.pollSeconds) || 60) * 1000;
@@ -53,17 +64,31 @@ async function checkAlerts() {
   if (!gameView || gameView.webContents.isDestroyed()) return;
   const counts = await gameView.webContents.executeJavaScript(ALERT_COUNTS_JS).catch(() => null);
   if (!counts) return;
-  if (alertBaseline) {
-    const newAlerts = counts.alerts - alertBaseline.alerts;
-    const newMail = counts.mail - alertBaseline.mail;
-    if (newAlerts > 0) {
-      notify('gameAlert', 'New in-game alert', `${newAlerts} new · ${counts.alerts} unread in total.`);
-    }
-    if (newMail > 0) {
-      notify('gameMail', 'New in-game e-mail', `${newMail} new · ${counts.mail} unread in total.`);
-    }
+  const seen = loadConfig().alerts.lastSeen ?? { alerts: 0, mail: 0, alertId: null };
+  const newAlerts = counts.alerts - seen.alerts;
+  const newMail = counts.mail - seen.mail;
+  // A new alert can arrive while an older one is still unread, so compare ids too.
+  const idNew = counts.alerts > 0 && counts.newest != null && counts.newest.id !== seen.alertId;
+  if (newAlerts > 0 || idNew) {
+    const detail = counts.newest && counts.newest.id !== seen.alertId
+      ? `${counts.newest.title ?? 'Alert'}: ${String(counts.newest.message ?? '').slice(0, 300)}`
+      : `${counts.alerts} unread alert${counts.alerts === 1 ? '' : 's'} in total.`;
+    notify('gameAlert', 'New in-game alert', detail);
   }
-  alertBaseline = counts;
+  if (newMail > 0) {
+    notify('gameMail', 'New in-game e-mail', `${counts.mail} unread message${counts.mail === 1 ? '' : 's'} in total.`);
+  }
+  if (counts.alerts !== seen.alerts || counts.mail !== seen.mail || (counts.newest?.id ?? null) !== (seen.alertId ?? null)) {
+    patchConfig({
+      alerts: {
+        lastSeen: {
+          alerts: counts.alerts,
+          mail: counts.mail,
+          alertId: counts.newest?.id ?? seen.alertId ?? null,
+        },
+      },
+    });
+  }
 }
 
 /**
