@@ -34,9 +34,9 @@ function report(ctx, run) {
   });
 }
 
-async function readSettled(ctx, tries = 8) {
+async function readSettled(ctx, tries = 15) {
   let state = await ctx.read();
-  for (let i = 0; i < tries && (state.energy?.current == null || state.energy?.max == null); i += 1) {
+  for (let i = 0; i < tries && state.energy?.percent == null; i += 1) {
     await ctx.sleep(300);
     state = await ctx.read();
   }
@@ -64,27 +64,17 @@ async function ensurePage(ctx, cfg) {
   throw new Error(`gym page did not load (${want})`);
 }
 
-function energyNeed(cfg, state) {
-  const max = state.energy?.max;
-  if (!max) return null;
-  // The dropdown is a share of the full bar, not of whatever is left.
-  return Math.max(1, Math.round((Number(cfg.energyPercent) / 100) * max));
+function needPct(cfg) {
+  return Number(cfg.energyPercent);
 }
 
 /**
- * The game's slider takes a percentage of the *current* bar. Find the slider value that spends
- * exactly the requested amount when the bar holds `current` energy.
+ * The game's slider is a percentage of the *current* bar. To spend `need` percentage points of the
+ * bar while holding `havePct`, move the slider to need/havePct of what is there.
  */
-function sliderFor(need, current) {
-  if (!need || !current) return null;
-  const ideal = Math.round((need / current) * 100);
-  for (let d = 0; d <= 4; d += 1) {
-    for (const c of [ideal - d, ideal + d]) {
-      if (c < 1 || c > 100) continue;
-      if (Math.max(1, Math.floor((current * c) / 100)) === need) return c;
-    }
-  }
-  return Math.min(100, Math.max(1, ideal));
+function sliderForPct(need, havePct) {
+  if (!havePct) return null;
+  return Math.min(100, Math.max(1, Math.round((need / havePct) * 100)));
 }
 
 function turnCount(state) {
@@ -105,14 +95,19 @@ async function waitForEnergy(ctx, cfg, run) {
   while (true) {
     if (run.stopped) return null;
     if (!state.page) state = await ensurePage(ctx, cfg);
-    const need = energyNeed(cfg, state);
-    const have = state.energy?.current;
-    if (need == null || have == null) throw new Error('energy meter not readable');
-    if (have >= need) return state;
-    const key = `${have}/${need}`;
-    if (key !== last) {
-      ctx.log('info', `gym: waiting for energy (${have}/${need} · ${cfg.energyPercent}% of ${state.energy?.max})`);
-      last = key;
+    const need = needPct(cfg);
+    const have = state.energy?.percent;
+    if (have == null) {
+      // The meter can disappear for a moment while the page re-renders after a set.
+      if (last !== 'unreadable') {
+        ctx.log('warn', 'gym: energy meter unavailable, retrying');
+        last = 'unreadable';
+      }
+    } else if (have >= need) {
+      return state;
+    } else if (String(have) !== last) {
+      ctx.log('info', `gym: waiting for energy (${have}% · need ${need}%)`);
+      last = String(have);
     }
     for (let i = 0; i < POLL_MS / 1000 && !run.stopped; i += 1) await ctx.sleep(1000);
     if (run.stopped) return null;
@@ -127,13 +122,14 @@ async function prepare(ctx, cfg, state) {
     await clickOrThrow(ctx, SEL.gym.focus[stat], `focus ${stat}`);
     await ctx.sleep(250);
   }
-  const need = energyNeed(cfg, state);
-  let current = state.energy?.current;
-  if (current == null) {
+  const need = needPct(cfg);
+  let havePct = state.energy?.percent;
+  if (havePct == null) {
     state = await readSettled(ctx);
-    current = state.energy?.current;
+    havePct = state.energy?.percent;
   }
-  const sliderPct = sliderFor(need, current);
+  const current = state.energy?.current ?? null;
+  const sliderPct = sliderForPct(need, havePct);
   if (sliderPct == null) throw new Error('energy meter not readable');
   const setSlider = (value) => ctx.eval(`(() => {
     const el = document.querySelector(${J(SEL.gym.energy)});
@@ -165,8 +161,9 @@ async function prepare(ctx, cfg, state) {
     throw new Error(`energy slider did not take ${sliderPct}%`);
   }
   const est = estimate(after.preview);
-  if (est && est.cost !== need) {
-    throw new Error(`energy slider shows ${est.cost} instead of ${need} (${after.preview.slice(0, 80)})`);
+  const expected = current ? Math.max(1, Math.floor((current * sliderPct) / 100)) : null;
+  if (expected != null && est && Math.abs(est.cost - expected) > 1) {
+    throw new Error(`energy slider shows ${est.cost} instead of ~${expected} (${after.preview.slice(0, 80)})`);
   }
   await clickGap(ctx);
   return ctx.read();
@@ -236,15 +233,15 @@ export async function startGym(ctx) {
       }
       ctx.log(
         'info',
-        `gym: open — energy ${state.energy?.current ?? '?'}/${state.energy?.max ?? '?'} · turns ${state.turns?.current ?? '?'} · ${cfg.stat} at ${cfg.energyPercent}% per set`,
+        `gym: open — energy ${state.energy?.percent ?? '?'}% · turns ${state.turns?.current ?? '?'} · ${cfg.stat} at ${cfg.energyPercent}% per set`,
       );
 
       if (cfg.dryRun) {
-        const need = energyNeed(cfg, state);
-        const have = state.energy?.current;
-        if (need == null || have == null) return 'dry run — energy meter not readable';
+        const need = needPct(cfg);
+        const have = state.energy?.percent;
+        if (have == null) return 'dry run — energy meter not readable';
         if (have < need) {
-          return `dry run — energy ${have}/${need} (${cfg.energyPercent}% of ${state.energy?.max}), would wait`;
+          return `dry run — energy ${have}% (need ${need}%), would wait`;
         }
         state = await prepare(ctx, cfg, state);
         const est = estimate(state.preview);
@@ -263,8 +260,8 @@ export async function startGym(ctx) {
           if (state.trainDisabled) {
             return `train disabled — ${state.status || state.preview || 'the game blocked the set'}`;
           }
-          const need = energyNeed(cfg, state);
-          if ((state.energy?.current ?? 0) < (need ?? 1)) break;
+          const need = needPct(cfg);
+          if ((state.energy?.percent ?? 0) < need) break;
           requireTurn(state);
           state = await trainOnce(ctx, cfg, run, state);
         }

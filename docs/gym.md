@@ -16,14 +16,14 @@ restarts.
 
 ## Energy and turns
 
-- **Energy per set** is a share of the **full** bar: 25% on a 150 bar means 38 energy, 100% means a
-  full bar. The loop waits until the bar holds that much, so `100%` only trains at full energy and
-  `25%` trains once the bar has at least 38.
-- The game's own slider is a share of the *current* bar, so the bot converts: to spend 38 out of 150
-  it sets the slider to 25%; to spend 38 out of 60 it sets it to 63%. The published preview cost is
-  verified against the requested amount before the click.
-- It keeps training while the remaining bar can still fund the chosen amount, then waits for
-  regeneration.
+- Everything is in **bar percentage**, the number the player HUD already shows, so a change to max
+  energy does not affect the logic. **Energy per set** is how many percentage points to spend: 25%
+  waits for the bar to read at least 25% and then trains on a quarter of the bar; 100% waits for a
+  full bar.
+- The game's own slider is a percentage of whatever is in the bar, so the bot converts: holding 40%
+  and spending 10 points sets the slider to 25%; holding 100% and spending 25 points sets 25%. The
+  preview cost is verified before the click (rounded to the nearest whole energy).
+- It keeps training while the bar still covers the chosen points, then waits for regeneration.
 - There is **no set limit and no session cap**: the feature runs until you stop it, the kill switch,
   or a real blocker (no turns, restricted gym, unreadable page).
 - Each set costs a turn, so the loop also checks the header turn counter and refuses to start a set
@@ -37,14 +37,14 @@ restarts.
 |---|---|---|
 | privateGym | off | use `#/city/private-gym`; requires an active Supporter |
 | stat | strength | `strength`, `speed` or `guard` (the game calls defence "Guard") |
-| energyPercent | 25 | 5, 10, 25, 50 or 100 percent of max energy per set |
+| energyPercent | 25 | 5, 10, 25, 50 or 100 percentage points of the bar per set |
 | dryRun | on | prepares focus and set size, never trains |
 
 ## Observed
 
-2026-10-23 on the test account: at 150/150 energy, 100% per set → one set, energy 150 → 0, 1 turn,
-preview `+51 – +61`. At 15/150 with 10% per set → 15 energy spent, `+4 – +5`, strength 73 → 77.
-At 15/150 with 25% or 100% the run waits (`waiting for energy (15/38 …)`) and spends nothing.
+2026-10-23 on the test account: at a 10% bar with 5% per set → two sets (7 and 8 energy), strength
+77 → 81, bar 10% → 0%. With 100% per set at a 10% bar the run waits (`energy 10% (need 100%)`) and
+spends nothing; at a 0% bar it waits as well.
 
 ## Failure modes
 
