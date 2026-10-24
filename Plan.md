@@ -1,32 +1,39 @@
 # LostPower Bot — Build Plan
 
-Status: v2 (post-recon) · Target: Windows desktop · Game: https://lostpower.com ("Lost Power City")
-Recon details: [docs/recon.md](docs/recon.md)
+Status: v3 (feature modules + proxy + alerts) · Target: Windows desktop · Game: https://lostpower.com ("Lost Power City")
+Recon details: [docs/recon.md](docs/recon.md) · Feature docs: [docs/](docs/)
 
 ---
 
 ## 1. Goal
 
 An Electron app that hosts the game in a persistent session and exposes a side panel where
-features are toggled on/off. Feature #1 plays the Playland Casino blackjack table: open the
-casino, click PLAY NOW on the Blackjack card, bet, deal, read the hand, ask DeepSeek for the
-play, click it, repeat until a limit stops it.
+features are toggles. Each feature is a module in `src/bot/registry.js` with its own settings,
+dry run and stop conditions; the panel builds itself from that registry.
+
+Shipped modules: Playland blackjack, Playland video poker, City Gym training. Platform-level
+features: an optional proxy (applied before the game loads) and Discord alerts for in-game
+alerts/e-mail plus feature events.
 
 ## 2. Scope
 
 **v1 (in)**
 - Game window with persistent login (log in by hand once; cookies survive restarts).
-- Side panel: feature toggles, blackjack settings, live log, status, emergency stop.
+- Side panel: feature toggles, per-feature settings, live log, status, emergency stop.
 - Blackjack loop end to end: open table → bet → deal → read → decide → act → repeat.
+- Video poker: three variants, exact EV over all hold patterns.
+- Gym: public/private floor, stat choice, percentage-of-bar energy gate, turn check.
 - Reader: DOM via `data-testid` (vision deferred).
-- Decision: `ds/deepseek-chat` via 9router, validated, with a local basic-strategy fallback.
+- Decision: strategy table by default; optional model via 9router, validated, with fallback.
 - Guardrails: max hands, stop-loss, max bet, dry-run, kill switch, session minutes.
 - Session stats in the panel: hands, P/L, tokens used; per-session token total in the finish log.
+- Proxy: HTTP/HTTPS/SOCKS5 with optional auth, applied before the first game request, fail-closed.
+- Discord alerts: unread alerts/mail watcher, gym sets, gambling hands, session summaries.
 - JSONL logs + last hand kept in memory for debugging.
 
 **v1 (out)**
-- Other games (registry is built for them), multi-account, parallel sessions, evasion,
-  CAPTCHA solving, cloud sync, auto-update, installer polish.
+- Automatic travel between districts, multi-account, parallel sessions, evasion, CAPTCHA solving,
+  cloud sync, auto-update, installer polish.
 - Real money. This is in-game credits only.
 
 ## 3. Key decisions
@@ -39,8 +46,12 @@ play, click it, repeat until a limit stops it.
 | **Reader** | **DOM via `data-testid`** (vision deferred) | Recon: the table is text DOM with per-card `aria-label` — exact, free, no hallucination. Vision verified working but costs 2 s + ~1.4k tokens per read |
 | Decision | Deterministic table by default; `cx/gpt-6-luna(max)` optional via `decisionMode` | The table is exact and instant; the model measured 98% agreement, so it is opt-in, not the default |
 | Actions | Click the real DOM buttons | Table has stable testids for every control |
-| Persistence | `userData/config.json`, `logs/*.jsonl`; API key via `safeStorage` | Zero deps, secret encrypted |
+| Persistence | `userData/config.json`, `logs/*.jsonl`; API keys/passwords via `safeStorage` | Zero deps, secrets encrypted |
 | Security | `contextIsolation`, `sandbox`, narrow preload, navigation locked to lostpower.com | Remote untrusted page |
+| Features | Registry modules; the panel renders whatever is in `features` | Adding a feature = one folder + one entry + one doc |
+| Gym gate | Percentage of the bar (never absolute energy), plus a turn check | Max-energy changes don't break it; matches what the HUD shows |
+| Proxy | Applied to the game session before `loadURL`; dead proxy fails closed | No request may escape over the real IP |
+| Alerts | Discord webhook, per-kind toggles, URL encrypted | Notification without watching the window |
 
 Model ids: `cx/gpt-6-luna(max)` (default decision model) and `ds/deepseek-chat` (alternative).
 Measured agreement with the strategy table: 98% for luna over 132 decisions, 90% for
@@ -61,7 +72,7 @@ Measured agreement with the strategy table: 98% for luna over 132 decisions, 90%
           │ Bot engine      │                          │
           │ (main process)  │──────────────────────────┘
           │ registry        │
-          │ blackjack FSM   │        ┌──────────────────────────┐
+          │ feature loops   │        ┌──────────────────────────┐
           └───────┬─────────┘───────▶│ 9router 127.0.0.1:20128  │
                   │                  │ ds/deepseek-chat         │
                   │ JSONL            │ (+ vision model)         │
@@ -69,10 +80,16 @@ Measured agreement with the strategy table: 98% for luna over 132 decisions, 90%
            userData/logs/
 ```
 
+Platform plumbing sits outside the feature loops: `applyProxy()` configures the game session
+before `loadURL()`, and the alert watcher (a timer in the main process) reads the header counters
+and posts to the Discord webhook. Neither path goes through the panel renderer.
+
 ## 5. Repo layout
 
 See [Project structure in README.md](README.md#project-structure) for the current file layout.
-Each game owns its loop, reader, strategy and selectors; `src/bot/` holds shared utilities.
+Each feature owns its loop, reader, strategy and selectors under `src/bot/<id>/`; `src/bot/` holds
+shared utilities, `src/alerts.js` the webhook queue, and `src/config.js` the encrypted secrets.
+Feature docs live in `docs/<id>.md` (see §16b).
 
 ## 6. Feature registry
 
@@ -93,22 +110,43 @@ export const features = [
     ],
     start(ctx) { return startBlackjack(ctx) },   // returns stop()
   },
+  {
+    id: 'gym',
+    label: 'Gym automation',
+    description: 'City Gym. Trains the chosen stat once the bar covers the chosen share.',
+    settings: [
+      { key: 'privateGym',    label: 'Use private gym (supporters)', type: 'bool',   default: false },
+      { key: 'stat',          label: 'Train',      type: 'select', options: [
+          { value: 'strength', label: 'Strength' }, { value: 'speed', label: 'Speed' },
+          { value: 'guard', label: 'Guard' }], default: 'strength' },
+      { key: 'energyPercent', label: 'Energy per set', type: 'select', options: [5, 10, 25, 50, 100], default: 25 },
+      { key: 'dryRun',        label: 'Dry run (no train)', type: 'bool', default: true },
+    ],
+    start(ctx) { return startGym(ctx) },
+  },
 ];
 ```
 
+Feature order in the panel is alphabetical by label. Each feature may expose `read(webContents)`
+for its DOM reader; the panel never receives `start`/`read` (stripped by `featureView`).
+
 ## 7. Panel + IPC
 
-Panel (≈340 px, right): status dot, feature toggles, blackjack settings, Start/Stop,
-live log tail (50 lines), and a session strip — hands, P/L, LLM/table agreement, tokens, and the
-last hand with its action and source (`llm` / `table`).
+Panel (≈340 px, right): status dot, feature toggles, per-feature settings, Start/Stop,
+live log tail, session strip (hands, P/L, LLM/table agreement, tokens, last hand), plus the
+collapsible ACCOUNT, PROXY and ALERTS cards.
 
 ```
-invoke  config:get / config:set
-invoke  feature:setEnabled(id, on)
-invoke  bot:start / bot:stop
+invoke  state:get
+invoke  config:patch / feature:setEnabled(id, on)
+invoke  auth:save / auth:clear
+invoke  proxy:save / proxy:clearAuth
+invoke  alerts:save / alerts:test
+invoke  log:get / log:popout
 on      status ({id, state, detail})
 on      log ({id, level, msg, data})
-on      hand ({n, player, dealer, action, source, credits})
+on      stats ({hands, pl, agree, tokens, last})
+on      features (serializable feature list)
 ```
 
 ## 8. Game flow (verified selectors)
@@ -189,7 +227,8 @@ model sampled 1-in-20 for comparison only) or `llm` (model decides, table valida
 
 - Click the testid button with `Runtime.evaluate` → `.click()`; verify the phase changed;
   retry once, then stop.
-- Random 250–700 ms delay before each action; no actions while a phase transition is in flight.
+- Randomised 70–450 ms gaps (occasionally longer) before each action; no actions while a phase
+  transition is in flight.
 - One bot instance per window; a second Start is a no-op.
 
 ## 13. Safety
@@ -201,6 +240,12 @@ model sampled 1-in-20 for comparison only) or `llm` (model decides, table valida
   answered by the bot; the human clears it and restarts.
 - Dry run default: opens the table and picks the bet, never deals.
 - Caps: max hands, stop-loss, bet ≤ 5% credits, max session minutes, 12 unreadable reads.
+- Gym: energy gate uses the bar percentage (not absolute energy) plus a header turn check; no set or
+  session cap, so the feature runs until stopped.
+- Proxy: applied to the game session before `loadURL`; loopback bypass disabled; an unreachable
+  proxy fails the load (`ERR_PROXY_CONNECTION_FAILED`) instead of falling back to the real IP.
+- Alerts: webhook URL encrypted with `safeStorage`, never returned to the renderer, restricted to
+  Discord webhook URLs; each notification kind has its own toggle.
 - Stop on: unknown phase, missing modal, credits below 10, login lost.
 - Vision, when added, captures only the modal region; nothing else leaves the machine.
 
@@ -209,14 +254,27 @@ model sampled 1-in-20 for comparison only) or `llm` (model decides, table valida
 ```json
 {
   "router": { "baseUrl": "http://127.0.0.1:20128/v1", "apiKeyEnc": "…" },
-  "models": { "decision": "ds/deepseek-chat", "vision": "ds/deepseek-v4-flash-vision-exp" },
-  "game": { "url": "https://lostpower.com/", "casinoPath": "/#/city/playland-casino" },
+  "models": { "decision": "cx/gpt-6-luna(max)", "vision": "ds/deepseek-v4-flash-vision-exp" },
+  "game": { "url": "https://lostpower.com/", "autoLogin": false, "username": "" },
+  "proxy": { "enabled": false, "protocol": "http", "host": "", "port": 8080,
+             "username": "", "passwordEnc": "" },
+  "alerts": { "enabled": false, "webhookEnc": "", "pollSeconds": 60,
+              "onAlerts": true, "onMail": true, "onGym": true,
+              "onGambling": true, "onSession": true },
   "features": {
     "blackjack": { "enabled": true, "bet": 10, "maxHands": 50, "stopLoss": 100,
-                   "dryRun": true, "maxSessionMinutes": 60, "allowTableFallback": true }
+                   "dryRun": true, "maxSessionMinutes": 60, "allowTableFallback": true,
+                   "decisionMode": "table" },
+    "video-poker": { "enabled": false, "variant": "jacks-or-better", "bet": 5,
+                     "maxHands": 50, "stopLoss": 100, "dryRun": true, "maxSessionMinutes": 60 },
+    "gym": { "enabled": false, "privateGym": false, "stat": "strength",
+             "energyPercent": 25, "dryRun": true }
   }
 }
 ```
+
+`publicConfig()` strips `passwordEnc`, `apiKeyEnc` and `webhookEnc`, exposing only `hasPassword` /
+`hasApiKey` / `hasWebhook` to the renderer.
 
 Shared login, casino and credit-badge selectors live in `src/bot/selectors.js`.
 Game-specific selectors live in `src/bot/blackjack/selectors.js` and
@@ -233,6 +291,9 @@ Game-specific selectors live in `src/bot/blackjack/selectors.js` and
 | M4 | Live burn-in | 50 hands unattended at min bet | **done** (40 hands / 94 s, 0 errors; +10 earlier) |
 | M5 | Guardrails + packaging | kill switch <1 action; portable `.exe` | kill switch **verified** (12 s abort, 0 hands after); packaging deferred |
 | M6 | Video poker | exact EV play on all three variants | **done** (JoB 6 live hands, Deuces 4; engine tests) |
+| M7 | Gym automation | energy/turn gating, stat choice, private floor, no caps | **done** (live sets, stat deltas verified, self-test `gymOpen/gymDry`) |
+| M8 | Proxy | applied before load, optional auth, fail-closed | **done** (authenticating CONNECT proxy: 407 → login → tunnel; dead proxy blocks the load) |
+| M9 | Discord alerts | alert/mail watcher, feature hooks, encrypted webhook | **done** (self-test delivers to a loopback webhook) |
 
 ## 15b. Video poker
 
@@ -261,9 +322,18 @@ Results are scored from the final five cards against the paytable, not from the 
 - `test/blackjack.test.js` — offline session-loop regression checks.
 - `test/llm.test.js` — mocked model-response validation.
 - `test/video-poker.test.js` — hand-category and hold-strategy checks.
+- `recon/gym-harness.mjs` — drives the real gym loop (dry and live). Covers the percentage gate,
+  focus verification, the set cooldown and the post-set wait.
+- `recon/proxy-test.mjs` — local CONNECT proxy that requires Basic auth; asserts `407 → login →
+  tunnel` and that the game loads. `recon/proxy-noauth.mjs` covers the plain tunnel and
+  `recon/proxy-config-test.mjs` the blank-password/keep semantics.
+- `npm run self-test` — app boot, panel, IPC, config, credential store, feature wiring, proxy
+  (`resolveProxy` + hidden secret + UI) and a real alert delivery to a loopback webhook.
 - `recon/*.png` + `recon/hand.json` are the seed regression set for the vision prompt.
 - `recon/loop-harness.mjs` writes `recon/burnin.log` and `recon/burnin-summary.json` per run;
   `KILL_AFTER_MS` aborts mid-run and asserts zero hands settle afterwards.
+- The offline `test/*.test.js` suite stays private (it embeds account data); `npm run self-test` is
+  the public entry point.
 - M2–M4 acceptance runs are the integration test.
 
 ## 16b. Documentation
@@ -286,17 +356,27 @@ Results are scored from the final five cards against the paytable, not from the 
 | Credits drain | Lost in-game money | Min bet 10, stop-loss, 5% cap, dry-run first |
 | Automation against the game's rules | Account action | Test account, human pacing, caps, stop on challenge; accept the risk explicitly |
 | Casino presence check after sustained play | Run stops | Detected (`CASINO_PRESENCE_REQUIRED`), bot stops and asks for a human instead of answering it |
+| Proxy misconfigured or down | Game unreachable | Fail-closed on purpose: no direct fallback; startup log names the proxy, panel shows the failed load |
+| Header counters are a server snapshot | Alerts can lag until the page refreshes | Watcher re-reads on the poll interval; forced reload is an open question (§18) |
+| Discord rate limits | Dropped notifications | Serialized queue, `429` `retry_after` retry, 8 s throttle for gambling hands |
+| Max energy changes | Gym gate drift | Gate and spend use percentages of the bar, never absolute energy |
 | 9router down / key rotated | No decisions | Table fallback keeps playing legally; banner in panel |
 
 ## 18. Open questions
 
 1. Keep `allowTableFallback` on? It means the bot keeps playing if 9router dies.
-2. Bet size and stop-loss defaults for this account (685 credits) — currently 10 and 100.
+2. Bet size and stop-loss defaults for this account — currently 10 and 100.
 3. Add the vision reader later as a cross-check once the loop has a few hundred hands?
+4. Auto-travel to Playland (and other districts) when a feature needs it — deferred by the owner.
+5. Presence-check trigger cadence: one observation (`sustained_play`) so far; is it time-based?
+6. Should the alert watcher force a page reload on its poll so in-game alerts arrive promptly, at
+   the cost of a visible blink?
+7. Gambling alerts: is one message per hand (8 s throttle) useful, or should it be wins/big wins only?
 
 ## 19. Definition of done (v1)
 
-Launch → log in once → toggle Blackjack autopilot → bot opens the casino, clicks PLAY NOW on the
-Blackjack table, bets, reads the hand, plays legal basic strategy (LLM-decided, table-validated),
-and stops on max hands, stop-loss, or `Ctrl+Shift+X`. Every hand and stop reason is in the panel
-and the log.
+Launch → log in once → optionally set the proxy and Discord webhook → toggle a feature. The bot opens
+the right page, reads the live DOM, acts legally, and stops on its own limits or `Ctrl+Shift+X`.
+Gym trains the chosen stat only when the bar covers the chosen share and a turn exists; blackjack and
+video poker play their strategy and report P/L; alerts post to Discord as alerts/mail arrive and when
+feature milestones happen. Every decision and stop reason is in the panel and the log.
