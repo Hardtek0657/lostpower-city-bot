@@ -134,13 +134,19 @@ async function waitForEnergy(ctx, cfg, run) {
 
 async function selectFocus(ctx, stat, state) {
   const wanted = stat.toUpperCase();
+  const hasPreview = (s) => estimate(s.preview)?.stat != null;
   const ok = (s) => s.focus === stat && estimate(s.preview)?.stat === wanted;
   if (ok(state)) return state;
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    // After a set the panel re-renders; give the preview time to come back.
+    for (let i = 0; i < 20 && !hasPreview(state); i += 1) {
+      await ctx.sleep(250);
+      state = await ctx.read();
+    }
     await beforeClick(ctx);
     await clickOrThrow(ctx, SEL.gym.focus[stat], `focus ${stat}`);
-    for (let i = 0; i < 10; i += 1) {
-      await ctx.sleep(150);
+    for (let i = 0; i < 20; i += 1) {
+      await ctx.sleep(200);
       state = await ctx.read();
       if (ok(state)) {
         ctx.log('info', `gym: focus ${stat}`);
@@ -309,6 +315,8 @@ export async function startGym(ctx) {
         requireTurn(state);
 
         while (!run.stopped) {
+          state = await readSettled(ctx);
+          if ((state.energy?.percent ?? 0) < needPct(cfg)) break;
           state = await prepare(ctx, cfg, state);
           if (state.trainDisabled) {
             // The table cools down for a few seconds between sets.
