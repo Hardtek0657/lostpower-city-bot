@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { features, featureView } from './bot/registry.js';
 import { readTable } from './bot/blackjack/reader.js';
 import { SEL } from './bot/selectors.js';
-import { loadConfig, patchConfig, publicConfig, resetConfigCache, configPath, getApiKey, setCredentials, getCredentials, clearCredentials, setProxySettings, getProxyPassword, clearProxyAuth } from './config.js';
+import { loadConfig, patchConfig, publicConfig, resetConfigCache, configPath, getApiKey, setCredentials, getCredentials, clearCredentials, setProxySettings, getProxyPassword, clearProxyAuth, setAlertSettings, getWebhook } from './config.js';
+import { notify, sendTest } from './alerts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SELF_TEST = process.argv.includes('--self-test');
@@ -21,6 +22,49 @@ let win = null;
 let logWin = null;
 let gameView = null;
 let proxyAuth = null;
+
+const ALERT_COUNTS_JS = `(() => {
+  const pick = (sel) => {
+    const el = document.querySelector(sel);
+    const m = (el?.innerText ?? '').match(/\\((\\d+)\\)/);
+    return m ? Number(m[1]) : null;
+  };
+  const alerts = pick('[data-testid="link-sideNav-messages-alerts"]');
+  const mail = pick('[data-testid="link-sideNav-messages-mailbox"]');
+  if (alerts == null && mail == null) return null;
+  return { alerts: alerts ?? 0, mail: mail ?? 0 };
+})()`;
+
+let alertTimer = null;
+let alertBaseline = null;
+
+function scheduleAlerts() {
+  clearInterval(alertTimer);
+  alertTimer = null;
+  alertBaseline = null;
+  const a = loadConfig().alerts ?? {};
+  if (!a.enabled) return;
+  const ms = Math.max(15, Number(a.pollSeconds) || 60) * 1000;
+  alertTimer = setInterval(checkAlerts, ms);
+  setTimeout(checkAlerts, 2500);
+}
+
+async function checkAlerts() {
+  if (!gameView || gameView.webContents.isDestroyed()) return;
+  const counts = await gameView.webContents.executeJavaScript(ALERT_COUNTS_JS).catch(() => null);
+  if (!counts) return;
+  if (alertBaseline) {
+    const newAlerts = counts.alerts - alertBaseline.alerts;
+    const newMail = counts.mail - alertBaseline.mail;
+    if (newAlerts > 0) {
+      notify('gameAlert', 'New in-game alert', `${newAlerts} new · ${counts.alerts} unread in total.`);
+    }
+    if (newMail > 0) {
+      notify('gameMail', 'New in-game e-mail', `${newMail} new · ${counts.mail} unread in total.`);
+    }
+  }
+  alertBaseline = counts;
+}
 
 /**
  * Apply the proxy to the game session. Must run before the game URL is loaded so no request
@@ -245,7 +289,14 @@ async function startFeature(id) {
       stats = { id, ...s };
       win?.webContents.send('stats', stats);
     },
+    notify: (kind, title, body) => notify(kind, title, body),
     onEnd: (why) => {
+      const ended = stats?.id === id ? stats : null;
+      if (ended) {
+        const hands = ended.hands ?? 0;
+        const pl = ended.pl == null ? 'n/a' : `${ended.pl >= 0 ? '+' : ''}${ended.pl}`;
+        notify('session', `${feature.label} finished`, `${hands} hand${hands === 1 ? '' : 's'} · P/L ${pl} · ${why}`);
+      }
       running.delete(id);
       patchConfig({ features: { [id]: { enabled: false } } });
       win?.webContents.send('features', featureView(loadConfig()));
@@ -382,6 +433,23 @@ function registerIpc() {
     return { config: publicConfig() };
   });
 
+  ipcMain.handle('alerts:save', async (_e, payload) => {
+    try {
+      await setAlertSettings(payload ?? {});
+    } catch (e) {
+      return { error: e.message };
+    }
+    scheduleAlerts();
+    log('app', 'info', loadConfig().alerts.enabled ? 'alerts on' : 'alerts off');
+    return { config: publicConfig() };
+  });
+
+  ipcMain.handle('alerts:test', async () => {
+    const sent = await sendTest();
+    log('app', sent ? 'info' : 'warn', sent ? 'alert test sent' : 'alert test failed — check the webhook');
+    return { sent };
+  });
+
   ipcMain.handle('proxy:save', async (_e, payload) => {
     const p = await setProxySettings(payload ?? {});
     const rule = await applyProxy();
@@ -430,6 +498,9 @@ async function selfTest() {
     .catch(() => false);
   checks.proxyUi = await win.webContents
     .executeJavaScript('["#proxyToggle","#proxyHost","#proxyPort","#proxyUser","#proxyPass","#saveProxy","#clearProxy"].every((s) => !!document.querySelector(s))')
+    .catch(() => false);
+  checks.alertsUi = await win.webContents
+    .executeJavaScript('["#alertsToggle","#alertsWebhook","#alertsPoll","#saveAlerts","#testAlerts"].every((s) => !!document.querySelector(s))')
     .catch(() => false);
 
   patchConfig({ features: { blackjack: { enabled: true } } });
@@ -559,7 +630,7 @@ async function selfTest() {
   if (process.env.LPC_USER && checks.autoLogin) {
     patchConfig({ features: { gym: { enabled: true, dryRun: true } } });
     await startFeature('gym');
-    await new Promise((r) => setTimeout(r, 8000));
+    await new Promise((r) => setTimeout(r, 12_000));
     checks.gymOpen = logRing.some((e) => /gym: open/.test(e.msg));
     checks.gymDry = logRing.some((e) => /gym: finished — dry run/.test(e.msg));
     killAll('selftest');
@@ -596,6 +667,31 @@ async function selfTest() {
     checks.proxyHidden = !('passwordEnc' in publicConfig().proxy);
   }
 
+  // Alerts: deliver to a loopback webhook and keep the URL out of the renderer.
+  {
+    const http = await import('node:http');
+    const received = [];
+    const srv = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        received.push(body);
+        res.writeHead(204);
+        res.end();
+      });
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const { port } = srv.address();
+    await setAlertSettings({ enabled: true, webhook: `http://127.0.0.1:${port}/hook`, pollSeconds: 60 });
+    await notify('gym', 'Gym set', 'selftest delivery');
+    await new Promise((r) => setTimeout(r, 800));
+    checks.alertDelivered = received.some((b) => /Gym set/.test(b));
+    srv.close();
+    await setAlertSettings({ enabled: false, webhook: '' });
+    scheduleAlerts();
+    checks.alertsHidden = !('webhookEnc' in publicConfig().alerts);
+  }
+
   const ok =
     checks.game.startsWith('complete|') && checks.panel && checks.persist && checks.betPatch && checks.betRoundTrip &&
     checks.started && checks.stopped && checks.killed && checks.shortcut &&
@@ -604,6 +700,7 @@ async function selfTest() {
     (checks.secretHidden === undefined || checks.secretHidden) &&
     checks.vpReader && checks.vpView && checks.gymReader && checks.fold && checks.accountFold && checks.sorted && checks.authClear && checks.offGuard && checks.logPopout &&
     checks.proxyResolve && checks.proxyHidden && checks.proxyUi &&
+    checks.alertsUi && checks.alertDelivered && checks.alertsHidden &&
     (checks.gymOpen === undefined || (checks.gymOpen && checks.gymDry)) &&
     (checks.vpOpen === undefined || checks.vpBlocked || (checks.vpOpen && checks.vpDry && !checks.vpBadVariant));
   console.log('SELFTEST ' + JSON.stringify({ ok, ...checks }));
@@ -614,6 +711,7 @@ async function selfTest() {
 app.whenReady().then(async () => {
   registerIpc();
   await createWindow();
+  scheduleAlerts();
   log('app', 'info', 'ready');
 
   const registered = globalShortcut.register('Control+Shift+X', () => killAll('ctrl+shift+x'));

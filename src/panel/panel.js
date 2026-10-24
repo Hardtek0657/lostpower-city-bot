@@ -64,6 +64,7 @@ function settingRow(id, schema, value) {
 const expanded = new Set();
 let accountOpen = false;
 let proxyOpen = false;
+let alertsOpen = false;
 
 function summaryOf(f, cfg) {
   const parts = [];
@@ -203,6 +204,24 @@ function paintProxy() {
   $('#proxyToggle').setAttribute('aria-expanded', String(proxyOpen));
 }
 
+function paintAlerts() {
+  const a = state.config?.alerts ?? {};
+  $('#alertsEnabled').checked = Boolean(a.enabled);
+  $('#alertsWebhook').value = '';
+  $('#alertsWebhook').placeholder = a.hasWebhook ? '•••• saved' : 'https://discord.com/api/webhooks/…';
+  $('#alertsPoll').value = a.pollSeconds ?? 60;
+  $('#alertsOnAlerts').checked = a.onAlerts !== false;
+  $('#alertsOnMail').checked = a.onMail !== false;
+  $('#alertsOnGym').checked = a.onGym !== false;
+  $('#alertsOnGambling').checked = a.onGambling !== false;
+  $('#alertsOnSession').checked = a.onSession !== false;
+  $('#alertsSummary').textContent = a.enabled
+    ? (a.hasWebhook ? 'discord webhook saved' : 'enabled · no webhook')
+    : 'off';
+  $('#alerts').classList.toggle('open', alertsOpen);
+  $('#alertsToggle').setAttribute('aria-expanded', String(alertsOpen));
+}
+
 function addLog(entry) {  const li = document.createElement('li');
   li.className = LEVELS.includes(entry.level) ? entry.level : 'info';
   const time = String(entry.t).slice(11, 19);
@@ -221,6 +240,7 @@ async function init() {
   paintStats(state.stats ?? null);
   paintAccount();
   paintProxy();
+  paintAlerts();
   for (const entry of state.log) addLog(entry);
 
   window.bot.onLog(addLog);
@@ -288,6 +308,36 @@ async function init() {
     state.config = res.config;
     paintProxy();
     $('#proxyState').textContent = res.rule ? `applied · ${res.rule}` : 'applied · direct';
+  });
+
+  $('#alertsToggle').addEventListener('click', () => {
+    alertsOpen = !alertsOpen;
+    paintAlerts();
+  });
+  $('#testAlerts').addEventListener('click', async () => {
+    $('#alertsState').textContent = 'sending…';
+    const res = await window.bot.testAlerts();
+    $('#alertsState').textContent = res.sent ? 'test sent' : 'test failed — check the webhook';
+  });
+  $('#saveAlerts').addEventListener('click', async () => {
+    const webhook = $('#alertsWebhook').value.trim();
+    const res = await window.bot.saveAlerts({
+      enabled: $('#alertsEnabled').checked,
+      pollSeconds: Number($('#alertsPoll').value),
+      onAlerts: $('#alertsOnAlerts').checked,
+      onMail: $('#alertsOnMail').checked,
+      onGym: $('#alertsOnGym').checked,
+      onGambling: $('#alertsOnGambling').checked,
+      onSession: $('#alertsOnSession').checked,
+      ...(webhook ? { webhook } : {}),
+    });
+    if (res.error) {
+      $('#alertsState').textContent = res.error;
+      return;
+    }
+    state.config = res.config;
+    paintAlerts();
+    $('#alertsState').textContent = res.config.alerts.enabled ? 'saved · watching' : 'saved · off';
   });
 }
 

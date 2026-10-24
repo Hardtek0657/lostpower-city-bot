@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('bot', {
   clearAuth: () => ipcRenderer.invoke('auth:clear'),
   saveProxy: (payload) => ipcRenderer.invoke('proxy:save', payload),
   clearProxyAuth: () => ipcRenderer.invoke('proxy:clearAuth'),
+  saveAlerts: (payload) => ipcRenderer.invoke('alerts:save', payload),
+  testAlerts: () => ipcRenderer.invoke('alerts:test'),
   getLog: () => ipcRenderer.invoke('log:get'),
   popoutLog: () => ipcRenderer.invoke('log:popout'),
   onLog: (cb) => ipcRenderer.on('log', (_e, entry) => cb(entry)),

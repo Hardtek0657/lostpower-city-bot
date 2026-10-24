@@ -199,6 +199,9 @@ async function settle(ctx, cfg, run, state) {
   if (run.last) run.last.result = s.result;
   const pl = (s.credits ?? 0) - (run.startCredits ?? s.credits ?? 0);
   ctx.log('info', `blackjack: hand ${run.hands} — ${s.result ?? 'no result'} | credits ${s.credits ?? '?'} (${pl >= 0 ? '+' : ''}${pl})`);
+  if (run.hands > 1) {
+    ctx.notify?.('gambling', `Blackjack ${s.result ?? 'hand'}`, `credits ${pl >= 0 ? '+' : ''}${pl} · ${run.hands} hands this run`);
+  }
   report(ctx, run);
   if (pl <= -Math.abs(cfg.stopLoss)) {
     run.stopped = true;

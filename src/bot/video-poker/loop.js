@@ -170,6 +170,9 @@ async function playHand(ctx, cfg, run, state) {
   run.last = { ...run.last, result: label, made: key };
   report(ctx, run);
   ctx.log('info', `video poker: hand ${run.hands} — ${label}${key ? ` (${key})` : ''} · credits ${after.credits}`);
+  if (net != null) {
+    ctx.notify?.('gambling', `Video poker ${label}`, `${VARIANT_LABEL[cfg.variant]} · credits ${after.credits ?? '?'} · ${run.wins}W/${run.losses}L`);
+  }
   await betweenHands(ctx);
   return null;
 }

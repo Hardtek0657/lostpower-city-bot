@@ -274,6 +274,7 @@ async function trainOnce(ctx, cfg, run, state) {
     'info',
     `gym: set ${run.sets} — ${label}${delta ? ` · ${delta}` : ''} · energy ${before}% → ${after.energy?.percent ?? '?'}%`,
   );
+  ctx.notify?.('gym', 'Gym set complete', `${label}${delta ? ` · ${delta}` : ''} · energy ${before}% → ${after.energy?.percent ?? '?'}%`);
   return after;
 }
 

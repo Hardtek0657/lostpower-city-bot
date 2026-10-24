@@ -62,6 +62,7 @@ docs/
   blackjack.md              Feature doc: blackjack autopilot
   gym.md                    Feature doc: gym automation
   proxy.md                  Network proxy setup and guarantees
+  alerts.md                 Discord webhook notifications
   video-poker.md            Feature doc: video poker
 Plan.md                     Design notes and implementation history
 package.json                Dependencies and scripts
@@ -167,6 +168,12 @@ Optional HTTP / HTTPS / SOCKS5 proxy for the game view, configured in the **PROX
 in `config.json` (password encrypted with the OS keystore). It is applied to the game session before
 the game URL loads, so no request leaves over a direct connection when it is enabled. Credentials are
 optional — leave both blank for IP-allowlist proxies. See [docs/proxy.md](docs/proxy.md).
+
+## Alerts
+
+Optional Discord webhook notifications: new in-game alerts and e-mail, gym sets, gambling hands and
+a session summary when a feature ends. Configured in the **ALERTS** card; the webhook URL is stored
+encrypted and never shown back. See [docs/alerts.md](docs/alerts.md).
 
 ## Tests
 

@@ -15,6 +15,16 @@ const DEFAULTS = {
   models: { decision: 'cx/gpt-6-luna(max)', vision: 'ds/deepseek-v4-flash-vision-exp' },
   game: { url: 'https://lostpower.com/', autoLogin: false, username: '' },
   proxy: { enabled: false, protocol: 'http', host: '', port: 0, username: '', passwordEnc: '' },
+  alerts: {
+    enabled: false,
+    webhookEnc: '',
+    pollSeconds: 60,
+    onAlerts: true,
+    onMail: true,
+    onGym: true,
+    onGambling: true,
+    onSession: true,
+  },
   features: featureDefaults,
 };
 
@@ -61,10 +71,12 @@ export function publicConfig() {
   const c = loadConfig();
   const { passwordEnc, ...game } = c.game;
   const { passwordEnc: proxyPass, ...proxy } = c.proxy;
+  const { webhookEnc, ...alerts } = c.alerts;
   return {
     ...c,
     game: { ...game, hasPassword: Boolean(passwordEnc) },
     proxy: { ...proxy, hasPassword: Boolean(proxyPass) },
+    alerts: { ...alerts, hasWebhook: Boolean(webhookEnc) },
     router: { baseUrl: c.router.baseUrl, hasApiKey: Boolean(c.router.apiKeyEnc) },
   };
 }
@@ -155,6 +167,56 @@ export async function getProxyPassword() {
       c.proxy.passwordEnc = (await safeStorage.encryptStringAsync(value)).toString('base64');
       saveConfig();
     }
+    return value;
+  } catch {
+    return '';
+  }
+}
+
+const DISCORD_HOOK = /^https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
+const LOOPBACK_HOOK = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/\S*$/i;
+
+export async function setAlertSettings({
+  enabled, pollSeconds, onAlerts, onMail, onGym, onGambling, onSession, webhook,
+}) {
+  const c = loadConfig();
+  const a = c.alerts;
+  if (enabled !== undefined) a.enabled = Boolean(enabled);
+  if (pollSeconds !== undefined) {
+    const n = Number(pollSeconds);
+    if (!Number.isFinite(n)) throw new Error('poll interval must be a number');
+    a.pollSeconds = Math.min(600, Math.max(15, Math.round(n)));
+  }
+  if (onAlerts !== undefined) a.onAlerts = Boolean(onAlerts);
+  if (onMail !== undefined) a.onMail = Boolean(onMail);
+  if (onGym !== undefined) a.onGym = Boolean(onGym);
+  if (onGambling !== undefined) a.onGambling = Boolean(onGambling);
+  if (onSession !== undefined) a.onSession = Boolean(onSession);
+  if (webhook !== undefined) {
+    const url = String(webhook ?? '').trim();
+    if (url && !DISCORD_HOOK.test(url) && !LOOPBACK_HOOK.test(url)) {
+      throw new Error('webhook must be a Discord webhook URL');
+    }
+    a.webhookEnc = '';
+    if (url) {
+      try {
+        if (await safeStorage.isAsyncEncryptionAvailable()) {
+          a.webhookEnc = (await safeStorage.encryptStringAsync(url)).toString('base64');
+        }
+      } catch {
+        a.webhookEnc = '';
+      }
+    }
+  }
+  saveConfig();
+  return { ok: true, enabled: a.enabled };
+}
+
+export async function getWebhook() {
+  const enc = loadConfig().alerts.webhookEnc;
+  if (!enc) return '';
+  try {
+    const { value } = await decryptValue(enc);
     return value;
   } catch {
     return '';

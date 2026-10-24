@@ -63,6 +63,27 @@
         </div>
       </section>
 
+      <section id="alerts">
+        <button class="disclosure" id="alertsToggle" type="button" aria-expanded="false" aria-controls="alertsBody">
+          <span class="chev">▸</span><span class="name">ALERTS</span>
+        </button>
+        <p class="summary" id="alertsSummary"></p>
+        <div id="alertsBody">
+          <label class="row"><span>Discord alerts</span><input type="checkbox" id="alertsEnabled"></label>
+          <label class="row"><span>Webhook</span><input id="alertsWebhook" type="password" autocomplete="off" placeholder="https://discord.com/api/webhooks/…"></label>
+          <label class="row"><span>Poll (s)</span><input id="alertsPoll" type="number" min="15" max="600"></label>
+          <label class="row"><span>In-game alerts</span><input type="checkbox" id="alertsOnAlerts"></label>
+          <label class="row"><span>E-mail</span><input type="checkbox" id="alertsOnMail"></label>
+          <label class="row"><span>Gym sets</span><input type="checkbox" id="alertsOnGym"></label>
+          <label class="row"><span>Gambling hands</span><input type="checkbox" id="alertsOnGambling"></label>
+          <label class="row"><span>Session summary</span><input type="checkbox" id="alertsOnSession"></label>
+          <div class="row">
+            <span id="alertsState" class="hint"></span>
+            <span class="authBtns"><button id="testAlerts" type="button">test</button><button id="saveAlerts" type="button">save</button></span>
+          </div>
+        </div>
+      </section>
+
       <section id="session" hidden>
         <div class="statrow">
           <span>HANDS <b id="st-hands">0</b></span>
