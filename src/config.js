@@ -137,6 +137,14 @@ export async function setProxySettings({ enabled, protocol, host, port, username
   return c.proxy;
 }
 
+export function clearProxyAuth() {
+  const c = loadConfig();
+  c.proxy.username = '';
+  c.proxy.passwordEnc = '';
+  saveConfig();
+  return c.proxy;
+}
+
 export async function getProxyPassword() {
   const enc = loadConfig().proxy.passwordEnc;
   if (!enc) return '';

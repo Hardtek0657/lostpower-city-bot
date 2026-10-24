@@ -32,7 +32,18 @@ password back — it shows `•••• saved`.
   credentials. A wrong password simply fails the load — nothing is retried in a loop.
 - Blank username and password: no `Proxy-Authorization` is sent, which is what IP-allowlist proxies
   expect.
+- **Blank password on save keeps the stored one** — so editing host/port doesn't wipe auth. Use
+  **clear auth** on the proxy card to remove the username and password explicitly.
 - SOCKS5 uses the `socks5://` scheme, so hostnames are resolved by the proxy rather than locally.
+
+## Persistence
+
+`enabled`, `protocol`, `host`, `port`, `username` and the encrypted password live in `config.json`.
+On every launch `applyProxy()` runs before `loadURL()`, so the saved state decides the route:
+
+- enabled → the session is proxied first; if the proxy is unreachable the load fails with
+  `ERR_PROXY_CONNECTION_FAILED` and nothing is fetched directly (fail-closed, no silent fallback).
+- disabled → the session is explicitly put in `direct` mode before the game loads.
 
 ## Verification
 

@@ -261,6 +261,13 @@ async function init() {
     proxyOpen = !proxyOpen;
     paintProxy();
   });
+  $('#clearProxy').addEventListener('click', async () => {
+    if (!window.confirm('Forget the saved proxy username and password?')) return;
+    const res = await window.bot.clearProxyAuth();
+    state.config = res.config;
+    paintProxy();
+    $('#proxyState').textContent = 'auth cleared';
+  });
   $('#saveProxy').addEventListener('click', async () => {
     const enabled = $('#proxyEnabled').checked;
     const host = $('#proxyHost').value.trim();

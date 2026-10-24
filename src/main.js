@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { features, featureView } from './bot/registry.js';
 import { readTable } from './bot/blackjack/reader.js';
 import { SEL } from './bot/selectors.js';
-import { loadConfig, patchConfig, publicConfig, resetConfigCache, configPath, getApiKey, setCredentials, getCredentials, clearCredentials, setProxySettings, getProxyPassword } from './config.js';
+import { loadConfig, patchConfig, publicConfig, resetConfigCache, configPath, getApiKey, setCredentials, getCredentials, clearCredentials, setProxySettings, getProxyPassword, clearProxyAuth } from './config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SELF_TEST = process.argv.includes('--self-test');
@@ -375,6 +375,13 @@ function registerIpc() {
     return { config: publicConfig() };
   });
 
+  ipcMain.handle('proxy:clearAuth', async () => {
+    clearProxyAuth();
+    await applyProxy();
+    log('app', 'info', 'proxy auth cleared');
+    return { config: publicConfig() };
+  });
+
   ipcMain.handle('proxy:save', async (_e, payload) => {
     const p = await setProxySettings(payload ?? {});
     const rule = await applyProxy();
@@ -422,7 +429,7 @@ async function selfTest() {
     .executeJavaScript('!!document.querySelector("#panel") && !!window.bot')
     .catch(() => false);
   checks.proxyUi = await win.webContents
-    .executeJavaScript('["#proxyToggle","#proxyHost","#proxyPort","#proxyUser","#proxyPass","#saveProxy"].every((s) => !!document.querySelector(s))')
+    .executeJavaScript('["#proxyToggle","#proxyHost","#proxyPort","#proxyUser","#proxyPass","#saveProxy","#clearProxy"].every((s) => !!document.querySelector(s))')
     .catch(() => false);
 
   patchConfig({ features: { blackjack: { enabled: true } } });
